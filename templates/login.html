@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h2>Login</h2>
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        <form method="post" action="/login">
+            <label>Client Code <input name="clientcode" required></label><br>
+            <label>Password <input name="password" type="password" required></label><br>
+            <label>TOTP <input name="totp" required></label><br>
+            <button type="submit">Login</button>
+        </form>
+    </div>
+</body>
+</html>

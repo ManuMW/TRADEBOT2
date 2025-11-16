@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Backtesting</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .back-btn {
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        .back-btn:hover {
+            background: #5a6268;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: white;
+        }
+        .section h3 {
+            margin-top: 0;
+            color: #007bff;
+        }
+        .control-group {
+            margin: 15px 0;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .control-group input, .control-group select, .control-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-family: inherit;
+        }
+        .control-group textarea {
+            min-height: 100px;
+            font-family: monospace;
+        }
+        .btn {
+            padding: 12px 24px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        .btn:hover {
+            background: #218838;
+        }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background: #007bff;
+        }
+        .btn-secondary:hover {
+            background: #0056b3;
+        }
+        .result-container {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background: #f8f9fa;
+            display: none;
+        }
+        .result-container.show {
+            display: block;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+            font-style: italic;
+        }
+        .result-content {
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
+        .meta-info {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+        }
+        .optimize-btns {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>📊 AI-Powered Backtesting</h2>
+            <a href="/dashboard" class="back-btn">← Back to Dashboard</a>
+        </div>
+        
+        <!-- Backtest Section -->
+        <div class="section">
+            <h3>🔄 Run Backtest</h3>
+            <p>Analyze your historical trades and get AI-powered performance insights.</p>
+            
+            <div class="control-group">
+                <label for="daysBack">Analysis Period (Days):</label>
+                <input type="number" id="daysBack" value="30" min="1" max="365">
+            </div>
+            
+            <div class="control-group">
+                <label for="strategyPrompt">Strategy/Analysis Instructions (Optional):</label>
+                <textarea id="strategyPrompt" placeholder="Leave blank for default analysis, or specify what aspects you want to focus on..."></textarea>
+            </div>
+            
+            <button class="btn" onclick="runBacktest()">▶️ Run Backtest</button>
+        </div>
+        
+        <!-- Optimization Section -->
+        <div class="section">
+            <h3>🎯 Trade Optimization Suggestions</h3>
+            <p>Get AI recommendations to improve your trading execution.</p>
+            
+            <div class="optimize-btns">
+                <button class="btn btn-secondary" onclick="optimize('all')">🔍 Optimize All</button>
+                <button class="btn btn-secondary" onclick="optimize('entry')">📥 Entry Points</button>
+                <button class="btn btn-secondary" onclick="optimize('exit')">📤 Exit Strategy</button>
+                <button class="btn btn-secondary" onclick="optimize('risk')">⚠️ Risk Management</button>
+            </div>
+        </div>
+        
+        <!-- Results -->
+        <div id="backtestResult" class="result-container">
+            <h3>Backtest Results</h3>
+            <div id="backtestContent" class="result-content"></div>
+            <div id="backtestMeta" class="meta-info"></div>
+        </div>
+        
+        <div id="optimizeResult" class="result-container">
+            <h3>Optimization Suggestions</h3>
+            <div id="optimizeContent" class="result-content"></div>
+            <div id="optimizeMeta" class="meta-info"></div>
+        </div>
+    </div>
+    
+    <script>
+        function disableButtons() {
+            document.querySelectorAll('.btn').forEach(btn => btn.disabled = true);
+        }
+        
+        function enableButtons() {
+            document.querySelectorAll('.btn').forEach(btn => btn.disabled = false);
+        }
+        
+        function showLoading(containerId, contentId) {
+            const container = document.getElementById(containerId);
+            const content = document.getElementById(contentId);
+            container.classList.add('show');
+            content.innerHTML = '<div class="loading">🔄 Analyzing data with AI... This may take a minute...</div>';
+        }
+        
+        function showError(containerId, contentId, message) {
+            const container = document.getElementById(containerId);
+            const content = document.getElementById(contentId);
+            container.classList.add('show');
+            content.innerHTML = `<div style="color: red;">❌ Error: ${message}</div>`;
+            enableButtons();
+        }
+        
+        function runBacktest() {
+            const days = document.getElementById('daysBack').value;
+            const strategy = document.getElementById('strategyPrompt').value.trim();
+            
+            disableButtons();
+            showLoading('backtestResult', 'backtestContent');
+            
+            const payload = { days: parseInt(days) };
+            if (strategy) {
+                payload.strategy = strategy;
+            }
+            
+            fetch('/api/backtest', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status) {
+                    document.getElementById('backtestContent').textContent = data.backtest_result;
+                    document.getElementById('backtestMeta').textContent = 
+                        `Period: ${data.days_analyzed} days | Data Points: ${data.data_points} | Generated: ${new Date(data.timestamp).toLocaleString()}`;
+                } else {
+                    showError('backtestResult', 'backtestContent', data.message);
+                }
+                enableButtons();
+            })
+            .catch(e => {
+                showError('backtestResult', 'backtestContent', e.message);
+            });
+        }
+        
+        function optimize(focus) {
+            disableButtons();
+            showLoading('optimizeResult', 'optimizeContent');
+            
+            fetch('/api/backtest/optimize', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ focus: focus })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status) {
+                    document.getElementById('optimizeContent').textContent = data.optimization;
+                    document.getElementById('optimizeMeta').textContent = 
+                        `Focus: ${data.focus_area} | Generated: ${new Date(data.timestamp).toLocaleString()}`;
+                } else {
+                    showError('optimizeResult', 'optimizeContent', data.message);
+                }
+                enableButtons();
+            })
+            .catch(e => {
+                showError('optimizeResult', 'optimizeContent', e.message);
+            });
+        }
+    </script>
+</body>
+</html>

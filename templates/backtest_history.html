@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 Backtesting Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        h1 {
+            color: #333;
+            font-size: 2.5em;
+        }
+        
+        .back-btn {
+            padding: 12px 25px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .back-btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+        
+        .backtest-form {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            color: white;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+        
+        .form-group input {
+            padding: 12px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 10px;
+            font-size: 1em;
+            background: rgba(255,255,255,0.1);
+            color: white;
+            font-weight: 600;
+        }
+        
+        .form-group input::placeholder {
+            color: rgba(255,255,255,0.5);
+        }
+        
+        .run-btn {
+            padding: 15px 40px;
+            background: white;
+            color: #667eea;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+        }
+        
+        .run-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+        
+        .run-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .results-section {
+            display: none;
+        }
+        
+        .results-section.active {
+            display: block;
+        }
+        
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .summary-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .summary-card h3 {
+            font-size: 0.9em;
+            opacity: 0.9;
+            margin-bottom: 10px;
+        }
+        
+        .summary-card .value {
+            font-size: 2em;
+            font-weight: 700;
+        }
+        
+        .trade-plan-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        
+        .trade-plan-section h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .trade-plan-content {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            line-height: 1.6;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .trades-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .trades-table thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .trades-table th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        .trades-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .trades-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .profit {
+            color: #10b981;
+            font-weight: 700;
+        }
+        
+        .loss {
+            color: #ef4444;
+            font-weight: 700;
+        }
+        
+        .status-closed_target {
+            background: #10b981;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.85em;
+        }
+        
+        .status-closed_sl {
+            background: #ef4444;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.85em;
+        }
+        
+        .status-closed_eod {
+            background: #6b7280;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.85em;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #667eea;
+            font-size: 1.2em;
+            font-weight: 600;
+        }
+        
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s infinite;
+        }
+        
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+        
+        .error-message {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            border-left: 4px solid #c33;
+            white-space: pre-wrap;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 4px solid #1565c0;
+        }
+        
+        .info-box h4 {
+            margin: 0 0 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Backtesting Dashboard</h1>
+            <a href="/view/dashboard" class="back-btn">← Back to Dashboard</a>
+        </div>
+        
+        <div class="backtest-form">
+            <h2 style="margin-bottom: 20px;">🔬 Run Historical Backtest</h2>
+            <div class="info-box">
+                <h4>💡 Why Single Day Analysis?</h4>
+                <p>For intraday options trading, <strong>1 day is sufficient</strong> because:</p>
+                <ul style="margin-left: 20px; margin-top: 10px;">
+                    <li>All positions are closed by 3:15 PM (no carry-forward)</li>
+                    <li>Each day is independent with fresh strikes and expiry</li>
+                    <li>Complete trade lifecycle: entry → monitoring → exit happens in one day</li>
+                    <li>Uses REAL historical option prices for accurate simulation</li>
+                </ul>
+            </div>
+            <p style="margin-bottom: 20px; opacity: 0.9; font-weight: 600;">
+                ⚠️ Select a <strong>past weekday</strong> (not holiday/weekend) for backtesting.
+            </p>
+            <div class="form-row">
+                <div class="form-group" style="flex: 2;">
+                    <label style="font-size: 1.1em; font-weight: 700;">📅 Select Backtest Date *</label>
+                    <input type="text" id="backtest-date" placeholder="dd/MM/yyyy" required 
+                           style="font-size: 1.1em; padding: 15px; border: 3px solid #667eea;">
+                    <small style="display: block; margin-top: 8px; color: #666;">
+                        <strong>Examples:</strong> 14/11/2025, 13/11/2025, 12/11/2025<br>
+                        <strong>Format:</strong> dd/MM/yyyy (Must be a past weekday when market was open)
+                    </small>
+                    <div id="date-validation" style="margin-top: 8px; font-weight: 600;"></div>
+                </div>
+                <div class="form-group">
+                    <label style="font-weight: 700;">Capital (Rs.)</label>
+                    <input type="number" id="capital" value="15000" min="5000" max="100000" step="1000"
+                           style="font-size: 1.05em; padding: 12px;">
+                    <small style="display: block; margin-top: 5px; color: #666;">
+                        Your investment amount (Min: Rs.5,000 | Max: Rs.1,00,000)
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label>Risk Per Trade (%)</label>
+                    <input type="number" id="risk-percent" value="2" min="1" max="5" step="0.5">
+                </div>
+            </div>
+            <button class="run-btn" id="run-backtest-btn" onclick="runBacktest()">
+                🚀 Run Backtest
+            </button>
+        </div>
+        
+        <div class="backtest-form" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+            <h2 style="margin-bottom: 15px;">📤 Upload Analysis Documents (Optional)</h2>
+            <p style="margin-bottom: 15px; opacity: 0.9;">Upload research documents for the selected backtest date to enhance AI trade plan generation. Documents will be used alongside technical indicators.</p>
+            <form id="uploadDocumentsForm" onsubmit="uploadDocuments(event)">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>🔍 Perplexity AI Research (.docx)</label>
+                        <input type="file" id="perplexity-doc" accept=".docx" style="background: rgba(255,255,255,0.9); color: #333;">
+                    </div>
+                    <div class="form-group">
+                        <label>🤖 OpenAI Research (.docx)</label>
+                        <input type="file" id="openai-doc" accept=".docx" style="background: rgba(255,255,255,0.9); color: #333;">
+                    </div>
+                </div>
+                <button type="submit" class="run-btn" style="background: #059669;">
+                    ⬆️ Upload Documents for Selected Date
+                </button>
+            </form>
+            <div id="upload-status" style="margin-top: 15px; font-weight: 600;"></div>
+        </div>
+        
+        <div id="loading-section" class="loading" style="display: none;">
+            Running backtest simulation
+        </div>
+        
+        <div id="error-section"></div>
+        
+        <div id="results-section" class="results-section">
+            <div class="summary-cards">
+                <div class="summary-card">
+                    <h3>Total P&L</h3>
+                    <div class="value" id="total-pnl">₹0</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Total Trades</h3>
+                    <div class="value" id="total-trades">0</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Win Rate</h3>
+                    <div class="value" id="win-rate">0%</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Max Drawdown</h3>
+                    <div class="value" id="max-drawdown">0%</div>
+                </div>
+            </div>
+            
+            <div class="trade-plan-section">
+                <h2>📋 Generated Trade Plan</h2>
+                <div class="trade-plan-content" id="trade-plan-content"></div>
+            </div>
+            
+            <h2 style="margin-bottom: 15px;">📈 Trade Execution Log</h2>
+            <table class="trades-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Instrument</th>
+                        <th>Entry</th>
+                        <th>Exit</th>
+                        <th>Quantity</th>
+                        <th>Status</th>
+                        <th>P&L</th>
+                    </tr>
+                </thead>
+                <tbody id="trades-body">
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <script>
+        // Set default date to last weekday (not today)
+        function getLastWeekday() {
+            const today = new Date();
+            let lastDay = new Date(today);
+            lastDay.setDate(today.getDate() - 1); // Yesterday
+            
+            // If weekend, go back to Friday
+            if (lastDay.getDay() === 0) { // Sunday
+                lastDay.setDate(lastDay.getDate() - 2);
+            } else if (lastDay.getDay() === 6) { // Saturday
+                lastDay.setDate(lastDay.getDate() - 1);
+            }
+            
+            // Return in dd/MM/yyyy format
+            const day = String(lastDay.getDate()).padStart(2, '0');
+            const month = String(lastDay.getMonth() + 1).padStart(2, '0');
+            const year = lastDay.getFullYear();
+            return `${day}/${month}/${year}`;
+        }
+        
+        function parseDateDDMMYYYY(dateStr) {
+            const parts = dateStr.split('/');
+            if (parts.length !== 3) return null;
+            const day = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1; // Month is 0-indexed
+            const year = parseInt(parts[2]);
+            return new Date(year, month, day);
+        }
+        
+        function convertToAPIFormat(ddmmyyyy) {
+            const parts = ddmmyyyy.split('/');
+            if (parts.length !== 3) return null;
+            return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        }
+        
+        document.getElementById('backtest-date').value = getLastWeekday();
+        
+        // Validate date selection for dd/MM/yyyy format
+        document.getElementById('backtest-date').addEventListener('input', function() {
+            const dateStr = this.value;
+            const validation = document.getElementById('date-validation');
+            
+            // Check format
+            if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+                if (dateStr.length >= 10) {
+                    validation.innerHTML = '⚠️ <span style="color: #f59e0b;">Use format: dd/MM/yyyy (e.g., 14/11/2025)</span>';
+                } else {
+                    validation.innerHTML = '';
+                }
+                return;
+            }
+            
+            const selectedDate = parseDateDDMMYYYY(dateStr);
+            if (!selectedDate || isNaN(selectedDate.getTime())) {
+                validation.innerHTML = '❌ <span style="color: #ef4444;">Invalid date</span>';
+                return;
+            }
+            
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const dayOfWeek = selectedDate.getDay();
+            
+            if (selectedDate > today) {
+                validation.innerHTML = '❌ <span style="color: #ef4444;">Future date! Select a past date.</span>';
+            } else if (dayOfWeek === 0 || dayOfWeek === 6) {
+                validation.innerHTML = '⚠️ <span style="color: #f59e0b;">Weekend selected! Markets are closed. Choose a weekday.</span>';
+            } else {
+                validation.innerHTML = '✅ <span style="color: #10b981;">Valid trading day selected</span>';
+            }
+        });
+        
+        // Trigger validation for default date on page load
+        setTimeout(() => {
+            document.getElementById('backtest-date').dispatchEvent(new Event('input'));
+        }, 100);
+        
+        async function runBacktest() {
+            const dateInput = document.getElementById('backtest-date').value;
+            const capital = document.getElementById('capital').value;
+            const riskPercent = document.getElementById('risk-percent').value;
+            
+            if (!dateInput) {
+                alert('⚠️ Please enter a backtest date (dd/MM/yyyy)');
+                return;
+            }
+            
+            // Validate format
+            if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dateInput)) {
+                alert('⚠️ Invalid date format. Please use dd/MM/yyyy (e.g., 14/11/2025)');
+                return;
+            }
+            
+            // Convert dd/MM/yyyy to YYYY-MM-DD for API
+            const date = convertToAPIFormat(dateInput);
+            if (!date) {
+                alert('⚠️ Invalid date. Please check the format (dd/MM/yyyy)');
+                return;
+            }
+            
+            // Show loading
+            document.getElementById('loading-section').style.display = 'block';
+            document.getElementById('results-section').classList.remove('active');
+            document.getElementById('error-section').innerHTML = '';
+            document.getElementById('run-backtest-btn').disabled = true;
+            
+            try {
+                const response = await fetch('/api/backtest/historical', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        date: date,
+                        capital: parseFloat(capital),
+                        risk_percent: parseFloat(riskPercent)
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status) {
+                    displayResults(data);
+                } else {
+                    showError(data.message || 'Backtest failed');
+                }
+                
+            } catch (error) {
+                showError('Network error: ' + error.message);
+            } finally {
+                document.getElementById('loading-section').style.display = 'none';
+                document.getElementById('run-backtest-btn').disabled = false;
+            }
+        }
+        
+        function displayResults(data) {
+            // Summary cards
+            document.getElementById('total-pnl').textContent = '₹' + data.summary.total_pnl.toFixed(2);
+            document.getElementById('total-pnl').className = 'value ' + (data.summary.total_pnl >= 0 ? 'profit' : 'loss');
+            
+            document.getElementById('total-trades').textContent = data.summary.total_trades;
+            document.getElementById('win-rate').textContent = data.summary.win_rate.toFixed(1) + '%';
+            document.getElementById('max-drawdown').textContent = data.summary.max_drawdown.toFixed(2) + '%';
+            
+            // Trade plan
+            document.getElementById('trade-plan-content').textContent = data.trade_plan;
+            
+            // Trades table
+            const tbody = document.getElementById('trades-body');
+            tbody.innerHTML = '';
+            
+            data.simulation.trades.forEach(trade => {
+                const row = document.createElement('tr');
+                const pnlClass = trade.pnl >= 0 ? 'profit' : 'loss';
+                
+                row.innerHTML = `
+                    <td>${formatTime(trade.entry_time)}</td>
+                    <td>${trade.instrument}</td>
+                    <td>₹${trade.entry_price.toFixed(2)}</td>
+                    <td>₹${trade.exit_price ? trade.exit_price.toFixed(2) : '-'}</td>
+                    <td>${trade.quantity}</td>
+                    <td><span class="status-${trade.status}">${formatStatus(trade.status)}</span></td>
+                    <td class="${pnlClass}">₹${trade.pnl ? trade.pnl.toFixed(2) : '0.00'}</td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+            
+            document.getElementById('results-section').classList.add('active');
+        }
+        
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('en-IN', {hour: '2-digit', minute: '2-digit'});
+        }
+        
+        function formatStatus(status) {
+            const statusMap = {
+                'closed_target': '🎯 Target',
+                'closed_sl': '🛑 Stop Loss',
+                'closed_eod': '🕒 EOD Close'
+            };
+            return statusMap[status] || status;
+        }
+        
+        function showError(message) {
+            const errorHtml = `
+                <div class="error-message">
+                    ❌ <strong>Backtest Failed:</strong> ${message}
+                    
+                    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #fcc;">
+                        <strong>📋 Troubleshooting Checklist:</strong>
+                        <ul style="margin-left: 20px; margin-top: 10px; line-height: 1.8;">
+                            <li><strong>✓ Date Selection:</strong> Must be a past <strong>weekday</strong> (Mon-Fri), not weekend/holiday</li>
+                            <li><strong>✓ Login Status:</strong> Ensure you're logged in to Angel One (check Dashboard)</li>
+                            <li><strong>✓ Historical Data:</strong> Angel One API provides data for recent dates only (try last week)</li>
+                            <li><strong>✓ Market Hours:</strong> Selected date must be when Indian markets were open (9:15 AM - 3:30 PM)</li>
+                            <li><strong>✓ Terminal Logs:</strong> Check Flask console for detailed error: <code>flask run</code></li>
+                        </ul>
+                        
+                        <div style="background: #fffbeb; padding: 12px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #f59e0b;">
+                            <strong>💡 Recommended Dates to Try:</strong><br>
+                            <span style="font-family: monospace; font-size: 1.1em;">
+                                2025-11-14 (Thursday) • 2025-11-13 (Wednesday) • 2025-11-12 (Tuesday)
+                            </span>
+                        </div>
+                        
+                        <div style="margin-top: 15px; font-size: 0.95em; color: #666;">
+                            <strong>🔍 What the system does:</strong><br>
+                            1. Fetches NIFTY 5-min candles via Angel One <code>getCandleData()</code><br>
+                            2. Fetches option premium candles for each strike<br>
+                            3. Simulates entire trading day (9:15 AM - 3:30 PM)<br>
+                            4. Uses REAL historical prices, not approximations
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('error-section').innerHTML = errorHtml;
+        }
+        
+        async function uploadDocuments(event) {
+            event.preventDefault();
+            
+            const perplexityFile = document.getElementById('perplexity-doc').files[0];
+            const openaiFile = document.getElementById('openai-doc').files[0];
+            const dateInput = document.getElementById('backtest-date').value;
+            
+            if (!perplexityFile && !openaiFile) {
+                document.getElementById('upload-status').innerHTML = '<span style="color: #f59e0b;">⚠️ Please select at least one document to upload</span>';
+                return;
+            }
+            
+            if (!dateInput) {
+                document.getElementById('upload-status').innerHTML = '<span style="color: #ef4444;">❌ Please select a backtest date first</span>';
+                return;
+            }
+            
+            // Convert dd/MM/yyyy to YYYY-MM-DD
+            const uploadDate = convertToAPIFormat(dateInput);
+            if (!uploadDate) {
+                document.getElementById('upload-status').innerHTML = '<span style="color: #ef4444;">❌ Invalid date format</span>';
+                return;
+            }
+            
+            const formData = new FormData();
+            if (perplexityFile) formData.append('perplexity', perplexityFile);
+            if (openaiFile) formData.append('openai', openaiFile);
+            formData.append('date', uploadDate);
+            
+            document.getElementById('upload-status').innerHTML = '<span style="color: #3b82f6;">⏳ Uploading...</span>';
+            
+            try {
+                const response = await fetch('/api/documents/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.status) {
+                    document.getElementById('upload-status').innerHTML = '<span style="color: #10b981;">✅ ' + data.message + '</span>';
+                    document.getElementById('uploadDocumentsForm').reset();
+                } else {
+                    document.getElementById('upload-status').innerHTML = '<span style="color: #ef4444;">❌ ' + data.message + '</span>';
+                }
+            } catch (error) {
+                document.getElementById('upload-status').innerHTML = '<span style="color: #ef4444;">❌ Upload failed: ' + error.message + '</span>';
+            }
+        }
+        
+        // Set default date to yesterday
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        document.getElementById('backtest-date').value = yesterday.toISOString().split('T')[0];
+    </script>
+</body>
+</html>

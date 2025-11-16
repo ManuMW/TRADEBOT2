@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Trading Analysis</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .back-btn {
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        .back-btn:hover {
+            background: #5a6268;
+        }
+        .analysis-types {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .analysis-btn {
+            padding: 15px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        .analysis-btn:hover {
+            background: #0056b3;
+        }
+        .analysis-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .custom-prompt {
+            margin: 20px 0;
+        }
+        .custom-prompt textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-family: monospace;
+        }
+        .result-container {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background: #f8f9fa;
+            display: none;
+        }
+        .result-container.show {
+            display: block;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+            font-style: italic;
+        }
+        .analysis-content {
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
+        .timestamp {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>🤖 AI Trading Analysis</h2>
+            <a href="/dashboard" class="back-btn">← Back to Dashboard</a>
+        </div>
+        
+        <div class="analysis-types">
+            <button class="analysis-btn" onclick="analyze('overview')">📊 Overview</button>
+            <button class="analysis-btn" onclick="analyze('risk')">⚠️ Risk Analysis</button>
+            <button class="analysis-btn" onclick="analyze('performance')">📈 Performance</button>
+            <button class="analysis-btn" onclick="analyze('strategy')">💡 Strategy</button>
+        </div>
+        
+        <div class="custom-prompt">
+            <h3>Custom Analysis</h3>
+            <textarea id="customPrompt" placeholder="Enter your custom analysis prompt here..."></textarea>
+            <button class="analysis-btn" onclick="analyzeCustom()" style="margin-top: 10px;">🔍 Analyze Custom</button>
+        </div>
+        
+        <div id="resultContainer" class="result-container">
+            <h3>Analysis Result</h3>
+            <div id="analysisContent" class="analysis-content"></div>
+            <div id="timestamp" class="timestamp"></div>
+        </div>
+    </div>
+    
+    <script>
+        function disableButtons() {
+            document.querySelectorAll('.analysis-btn').forEach(btn => btn.disabled = true);
+        }
+        
+        function enableButtons() {
+            document.querySelectorAll('.analysis-btn').forEach(btn => btn.disabled = false);
+        }
+        
+        function showLoading() {
+            const container = document.getElementById('resultContainer');
+            const content = document.getElementById('analysisContent');
+            container.classList.add('show');
+            content.innerHTML = '<div class="loading">🔄 Analyzing your trading data with AI...</div>';
+        }
+        
+        function showResult(data) {
+            const container = document.getElementById('resultContainer');
+            const content = document.getElementById('analysisContent');
+            const timestamp = document.getElementById('timestamp');
+            
+            container.classList.add('show');
+            content.textContent = data.analysis;
+            timestamp.textContent = `Analysis Type: ${data.analysis_type} | Generated: ${new Date(data.timestamp).toLocaleString()}`;
+            enableButtons();
+        }
+        
+        function showError(message) {
+            const container = document.getElementById('resultContainer');
+            const content = document.getElementById('analysisContent');
+            
+            container.classList.add('show');
+            content.innerHTML = `<div style="color: red;">❌ Error: ${message}</div>`;
+            enableButtons();
+        }
+        
+        function analyze(type) {
+            disableButtons();
+            showLoading();
+            
+            fetch('/api/analyze', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ type: type })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status) {
+                    showResult(data);
+                } else {
+                    showError(data.message);
+                }
+            })
+            .catch(e => {
+                showError(e.message);
+            });
+        }
+        
+        function analyzeCustom() {
+            const prompt = document.getElementById('customPrompt').value.trim();
+            if (!prompt) {
+                alert('Please enter a custom prompt');
+                return;
+            }
+            
+            disableButtons();
+            showLoading();
+            
+            fetch('/api/analyze', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ prompt: prompt })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status) {
+                    showResult(data);
+                } else {
+                    showError(data.message);
+                }
+            })
+            .catch(e => {
+                showError(e.message);
+            });
+        }
+    </script>
+</body>
+</html>

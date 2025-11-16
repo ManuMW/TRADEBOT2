@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .back-btn {
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        .back-btn:hover {
+            background: #5a6268;
+        }
+        .refresh-btn {
+            padding: 10px 20px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .refresh-btn:hover {
+            background: #218838;
+        }
+        .data-container {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+            background: #f8f9fa;
+        }
+        .loading {
+            color: #999;
+            font-style: italic;
+        }
+        .error {
+            color: red;
+            padding: 10px;
+            background: #ffe6e6;
+            border: 1px solid red;
+            border-radius: 5px;
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>{{ title }}</h2>
+            <div>
+                <button class="refresh-btn" onclick="loadData()">🔄 Refresh</button>
+                <a href="/dashboard" class="back-btn">← Back to Dashboard</a>
+            </div>
+        </div>
+        
+        <div class="data-container">
+            <pre id="data" class="loading">Loading...</pre>
+        </div>
+    </div>
+    <script>
+        const API_ENDPOINT = '{{ api_endpoint }}';
+        
+        window.addEventListener('DOMContentLoaded', function() {
+            loadData();
+        });
+        
+        function loadData() {
+            document.getElementById('data').textContent = 'Loading...';
+            document.getElementById('data').className = 'loading';
+            
+            fetch(API_ENDPOINT)
+                .then(r => r.json())
+                .then(d => {
+                    document.getElementById('data').textContent = JSON.stringify(d, null, 2);
+                    document.getElementById('data').className = '';
+                })
+                .catch(e => {
+                    document.getElementById('data').textContent = 'Error: ' + e.message;
+                    document.getElementById('data').className = 'error';
+                });
+        }
+    </script>
+</body>
+</html>

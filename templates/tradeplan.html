@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Trade Plan Generator</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .back-btn {
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        .back-btn:hover {
+            background: #5a6268;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: white;
+        }
+        .section h3 {
+            margin-top: 0;
+            color: #007bff;
+        }
+        .upload-form {
+            display: grid;
+            gap: 15px;
+        }
+        .file-input-group {
+            padding: 15px;
+            border: 2px dashed #ddd;
+            border-radius: 5px;
+            background: #f8f9fa;
+        }
+        .file-input-group label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #007bff;
+        }
+        .file-input-group input {
+            width: 100%;
+        }
+        .btn {
+            padding: 12px 24px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .btn:hover {
+            background: #218838;
+        }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .btn-primary {
+            background: #007bff;
+        }
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+        .result-container {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background: #f8f9fa;
+            display: none;
+        }
+        .result-container.show {
+            display: block;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+            font-style: italic;
+        }
+        .tradeplan-content {
+            white-space: pre-wrap;
+            line-height: 1.8;
+            font-size: 15px;
+        }
+        .meta-info {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #ddd;
+        }
+        .success-message {
+            padding: 15px;
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            border-radius: 5px;
+            margin: 15px 0;
+            display: none;
+        }
+        .success-message.show {
+            display: block;
+        }
+        .error-message {
+            padding: 15px;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        .history-list {
+            list-style: none;
+            padding: 0;
+        }
+        .history-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+            cursor: pointer;
+        }
+        .history-item:hover {
+            background: #e9ecef;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>📋 AI Trade Plan Generator</h2>
+            <a href="/dashboard" class="back-btn">← Back to Dashboard</a>
+        </div>
+        
+        <!-- Upload Section -->
+        <div class="section">
+            <h3>📤 Upload Daily Analysis Document(s)</h3>
+            <p>Upload at least one analysis document (DOCX format) from Perplexity AI or OpenAI research to generate today's trade plan. You can upload one or both.</p>
+            
+            <div id="successMessage" class="success-message"></div>
+            
+            <form class="upload-form" id="uploadForm" onsubmit="uploadDocuments(event)">
+                <div class="file-input-group">
+                    <label for="perplexityFile">🔍 Perplexity AI Research Document (Optional):</label>
+                    <input type="file" id="perplexityFile" name="perplexity" accept=".docx">
+                    <small style="color: #666;">Upload if you have research from Perplexity AI</small>
+                </div>
+                
+                <div class="file-input-group">
+                    <label for="openaiFile">🤖 OpenAI Research Document (Optional):</label>
+                    <input type="file" id="openaiFile" name="openai" accept=".docx">
+                    <small style="color: #666;">Upload if you have research from OpenAI/ChatGPT</small>
+                </div>
+                
+                <button type="submit" class="btn">⬆️ Upload Document(s)</button>
+            </form>
+        </div>
+        
+        <!-- Generate Trade Plan Section -->
+        <div class="section">
+            <h3>🤖 Generate Trade Plan</h3>
+            <p>Generate an AI-powered trade plan based on uploaded documents and live market data.</p>
+            
+            <button class="btn btn-primary" onclick="generateTradePlan()">✨ Generate Today's Trade Plan</button>
+        </div>
+        
+        <!-- Trade Plan Result -->
+        <div id="tradePlanResult" class="result-container">
+            <h3>📋 Trade Plan</h3>
+            <div id="tradePlanContent" class="tradeplan-content"></div>
+            <div id="tradePlanMeta" class="meta-info"></div>
+        </div>
+    </div>
+    
+    <script>
+        function uploadDocuments(event) {
+            event.preventDefault();
+            
+            const formData = new FormData();
+            const perplexityFile = document.getElementById('perplexityFile').files[0];
+            const openaiFile = document.getElementById('openaiFile').files[0];
+            
+            if (!perplexityFile && !openaiFile) {
+                alert('Please select at least one document (Perplexity or OpenAI)');
+                return;
+            }
+            
+            if (perplexityFile) formData.append('perplexity', perplexityFile);
+            if (openaiFile) formData.append('openai', openaiFile);
+            
+            document.querySelector('button[type="submit"]').disabled = true;
+            
+            fetch('/api/documents/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status) {
+                    const msg = document.getElementById('successMessage');
+                    const uploadedDocs = data.uploaded.join(', ');
+                    msg.textContent = `✅ ${data.message} - Uploaded: ${uploadedDocs}`;
+                    msg.classList.add('show');
+                    
+                    // Reset form
+                    document.getElementById('uploadForm').reset();
+                    
+                    setTimeout(() => {
+                        msg.classList.remove('show');
+                    }, 5000);
+                } else {
+                    alert('Upload failed: ' + data.message);
+                }
+                document.querySelector('button[type="submit"]').disabled = false;
+            })
+            .catch(e => {
+                alert('Upload error: ' + e.message);
+                document.querySelector('button[type="submit"]').disabled = false;
+            });
+        }
+        
+        function generateTradePlan() {
+            const resultDiv = document.getElementById('tradePlanResult');
+            const contentDiv = document.getElementById('tradePlanContent');
+            const metaDiv = document.getElementById('tradePlanMeta');
+            
+            resultDiv.classList.add('show');
+            contentDiv.innerHTML = '<div class="loading">🔄 Analyzing documents and market data...<br>Generating comprehensive trade plan with AI...<br>This may take 1-2 minutes...</div>';
+            metaDiv.textContent = '';
+            
+            document.querySelector('.btn-primary').disabled = true;
+            
+            fetch('/api/tradeplan/generate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status) {
+                    contentDiv.textContent = data.trade_plan;
+                    const docsList = Array.isArray(data.documents_used) 
+                        ? data.documents_used.join(', ') 
+                        : data.documents_used;
+                    metaDiv.innerHTML = `
+                        <strong>Date:</strong> ${data.date}<br>
+                        <strong>Documents Used:</strong> ${docsList}<br>
+                        <strong>Generated:</strong> ${new Date(data.timestamp).toLocaleString()}
+                    `;
+                } else {
+                    contentDiv.innerHTML = `<div class="error-message">❌ ${data.message}</div>`;
+                }
+                document.querySelector('.btn-primary').disabled = false;
+            })
+            .catch(e => {
+                contentDiv.innerHTML = `<div class="error-message">❌ Error: ${e.message}</div>`;
+                document.querySelector('.btn-primary').disabled = false;
+            });
+        }
+    </script>
+</body>
+</html>

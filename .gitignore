@@ -1,0 +1,120 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+.virtualenv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+tradebot.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+tradebot.db
+
+# Session files
+sessions/
+*.session
+*.pkl
+*.pickle
+
+# Uploaded documents
+uploads/
+documents/
+*.docx
+*.pdf
+*.txt
+
+# API responses cache
+api_cache/
+cache/
+
+# Trading data
+trades/
+backtest_results/
+*.csv
+*.xlsx
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+
+# Scrip master (large file, can be regenerated)
+scrip_master.json
+
+# Smartapi snapshot (documentation)
+smartapi_snapshot/
+
+# Node modules (if any frontend)
+node_modules/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# pytest
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json

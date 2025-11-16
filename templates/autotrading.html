@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automated Trading System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            color: #667eea;
+            font-size: 28px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .back-btn {
+            background: #667eea;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+        .back-btn:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+        }
+        .status-card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 25px;
+        }
+        .status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .status-header h2 {
+            color: #333;
+            font-size: 22px;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 70px;
+            height: 34px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        input:checked + .slider:before {
+            transform: translateX(36px);
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .status-badge.enabled {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .status-badge.disabled {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .schedule-card {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .schedule-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin: 15px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+        }
+        .schedule-time {
+            font-size: 24px;
+            font-weight: 700;
+            color: #667eea;
+            min-width: 80px;
+        }
+        .schedule-desc {
+            flex: 1;
+        }
+        .schedule-desc h4 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .schedule-desc p {
+            color: #666;
+            font-size: 14px;
+        }
+        .plan-card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 25px;
+        }
+        .plan-content {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.8;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .no-plan {
+            text-align: center;
+            color: #999;
+            padding: 40px;
+        }
+        .trades-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .trade-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+        .trade-card h4 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .trade-detail {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            font-size: 14px;
+        }
+        .trade-detail label {
+            color: #666;
+            font-weight: 600;
+        }
+        .trade-detail span {
+            color: #333;
+        }
+        .refresh-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
+        }
+        .info-box {
+            background: #dbeafe;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .warning-box {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <span>🤖</span>
+                Automated Trading System
+            </h1>
+            <a href="/dashboard" class="back-btn">← Back to Dashboard</a>
+        </div>
+
+        <div class="status-card">
+            <div class="status-header">
+                <div>
+                    <h2>Auto-Trading Status</h2>
+                    <div style="margin-top: 10px;">
+                        <span class="status-badge" id="statusBadge">Checking...</span>
+                    </div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="autoTradingToggle" onchange="toggleAutoTrading()">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="warning-box">
+                ⚠️ <strong>Important:</strong> When enabled, the system will automatically generate trade plans at 9:15 AM, monitor prices, execute trades, and close positions at 3:15 PM. Make sure you have sufficient funds and understand the risks involved.
+            </div>
+
+            <div class="schedule-card">
+                <h3 style="margin-bottom: 15px; color: #333;">📅 Daily Schedule</h3>
+                
+                <div class="schedule-item">
+                    <div class="schedule-time">9:00 AM</div>
+                    <div class="schedule-desc">
+                        <h4>Pre-Market Data Fetch</h4>
+                        <p>Fetches SGX NIFTY, global market trends, and overnight data</p>
+                    </div>
+                </div>
+
+                <div class="schedule-item">
+                    <div class="schedule-time">9:15 AM</div>
+                    <div class="schedule-desc">
+                        <h4>Generate Trade Plan</h4>
+                        <p>AI analyzes all data and generates 1-2 specific NIFTY trade setups</p>
+                    </div>
+                </div>
+
+                <div class="schedule-item">
+                    <div class="schedule-time">9:15-3:15</div>
+                    <div class="schedule-desc">
+                        <h4>Price Monitoring & Execution</h4>
+                        <p>Monitors prices every 5-15 mins, executes trades when conditions met</p>
+                    </div>
+                </div>
+
+                <div class="schedule-item">
+                    <div class="schedule-time">3:15 PM</div>
+                    <div class="schedule-desc">
+                        <h4>Close All Positions</h4>
+                        <p>Automatically closes all open positions (intraday trading)</p>
+                    </div>
+                </div>
+
+                <div class="schedule-item">
+                    <div class="schedule-time">3:30 PM</div>
+                    <div class="schedule-desc">
+                        <h4>End-of-Day Review</h4>
+                        <p>Calculates P&L, stores results for learning and improvement</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="plan-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="color: #333;">📊 Today's Trade Plan</h2>
+                <button class="refresh-btn" onclick="refreshStatus()">🔄 Refresh</button>
+            </div>
+
+            <div class="info-box">
+                ℹ️ Trade plans are generated daily at 9:15 AM based on comprehensive market analysis including technical indicators, option Greeks, VIX, global markets, and your uploaded research documents.
+            </div>
+
+            <div id="planContent" class="no-plan">
+                Loading trade plan...
+            </div>
+        </div>
+
+        <div class="plan-card">
+            <h2 style="color: #333; margin-bottom: 20px;">💼 Active Trades</h2>
+            <div id="activeTrades" class="trades-grid">
+                <div class="no-plan">No active trades</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStatus = false;
+
+        async function refreshStatus() {
+            try {
+                const response = await fetch('/api/autotrading/status');
+                const data = await response.json();
+
+                if (data.status) {
+                    currentStatus = data.enabled;
+                    document.getElementById('autoTradingToggle').checked = data.enabled;
+                    
+                    const statusBadge = document.getElementById('statusBadge');
+                    if (data.enabled) {
+                        statusBadge.className = 'status-badge enabled';
+                        statusBadge.textContent = '✓ Enabled';
+                    } else {
+                        statusBadge.className = 'status-badge disabled';
+                        statusBadge.textContent = '✗ Disabled';
+                    }
+
+                    // Display trade plan
+                    const planContent = document.getElementById('planContent');
+                    if (data.trade_plan && data.trade_plan.plan) {
+                        planContent.className = 'plan-content';
+                        planContent.textContent = data.trade_plan.plan;
+                    } else {
+                        planContent.className = 'no-plan';
+                        planContent.textContent = 'No trade plan generated yet. Plans are generated at 9:15 AM on trading days.';
+                    }
+
+                    // Display active trades
+                    const activeTrades = document.getElementById('activeTrades');
+                    if (data.active_trades && Object.keys(data.active_trades).length > 0) {
+                        activeTrades.innerHTML = '';
+                        Object.entries(data.active_trades).forEach(([tradeId, trade]) => {
+                            activeTrades.innerHTML += `
+                                <div class="trade-card">
+                                    <h4>Trade #${tradeId}</h4>
+                                    <div class="trade-detail">
+                                        <label>Entry:</label>
+                                        <span>₹${trade.entry_price || 'N/A'}</span>
+                                    </div>
+                                    <div class="trade-detail">
+                                        <label>Stop Loss:</label>
+                                        <span>₹${trade.stop_loss || 'N/A'}</span>
+                                    </div>
+                                    <div class="trade-detail">
+                                        <label>Target:</label>
+                                        <span>₹${trade.target || 'N/A'}</span>
+                                    </div>
+                                    <div class="trade-detail">
+                                        <label>Quantity:</label>
+                                        <span>${trade.quantity || 'N/A'}</span>
+                                    </div>
+                                    <div class="trade-detail">
+                                        <label>Status:</label>
+                                        <span>${trade.status || 'N/A'}</span>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        activeTrades.innerHTML = '<div class="no-plan">No active trades</div>';
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching status:', error);
+            }
+        }
+
+        async function toggleAutoTrading() {
+            const enabled = document.getElementById('autoTradingToggle').checked;
+            
+            try {
+                const response = await fetch('/api/autotrading/toggle', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ enabled: enabled })
+                });
+
+                const data = await response.json();
+                
+                if (data.status) {
+                    alert(data.message);
+                    refreshStatus();
+                } else {
+                    alert('Error: ' + data.message);
+                    document.getElementById('autoTradingToggle').checked = currentStatus;
+                }
+            } catch (error) {
+                console.error('Error toggling auto-trading:', error);
+                alert('Network error: ' + error.message);
+                document.getElementById('autoTradingToggle').checked = currentStatus;
+            }
+        }
+
+        // Initial load
+        refreshStatus();
+
+        // Auto-refresh every 30 seconds
+        setInterval(refreshStatus, 30000);
+    </script>
+</body>
+</html>

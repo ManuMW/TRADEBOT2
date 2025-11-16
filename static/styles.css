@@ -1,0 +1,9 @@
+body { font-family: Arial, sans-serif; background: #f7f7f7; }
+.container { max-width: 400px; margin: 40px auto; background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px #0001; }
+h2 { text-align: center; }
+label { display: block; margin: 1em 0 0.5em; }
+input { width: 100%; padding: 0.5em; margin-bottom: 1em; }
+button { padding: 0.5em 1em; margin: 0.5em 0; }
+nav { text-align: right; margin-bottom: 1em; }
+.error { color: #c00; margin-bottom: 1em; text-align: center; }
+pre { background: #f0f0f0; padding: 1em; border-radius: 6px; }

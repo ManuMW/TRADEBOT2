@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Option Chain - Historical OI Data</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .back-btn {
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        .back-btn:hover {
+            background: #5a6268;
+        }
+        .form-section {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .form-group label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        .form-group input,
+        .form-group select {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .form-group small {
+            color: #666;
+            margin-top: 3px;
+            font-size: 12px;
+        }
+        .btn {
+            padding: 12px 24px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #007bff;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .info-box h4 {
+            margin-top: 0;
+            color: #007bff;
+        }
+        .result-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: none;
+        }
+        .result-container.show {
+            display: block;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+            font-style: italic;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .data-table th,
+        .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .data-table th {
+            background: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+        }
+        .data-table tr:hover {
+            background: #f8f9fa;
+        }
+        .chart-container {
+            margin-top: 20px;
+            height: 400px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+        }
+        .error-message {
+            padding: 15px;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>📊 Option Chain - Historical OI Data</h2>
+            <div>
+                <a href="/view/scriphelper" class="back-btn" style="background: #28a745; margin-right: 10px;">🔍 Find Token</a>
+                <a href="/dashboard" class="back-btn">← Back to Dashboard</a>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <h4>ℹ️ About Historical Open Interest Data</h4>
+            <p>This endpoint fetches Historical Open Interest (OI) data for live F&O contracts. You need:</p>
+            <ul>
+                <li><strong>Symbol Token:</strong> Get this from the scrip master/instrument list for <strong>active F&O contracts</strong></li>
+                <li><strong>Exchange:</strong> NFO (F&O segment)</li>
+                <li><strong>Interval:</strong> Time interval for data points</li>
+                <li><strong>Date Range:</strong> Must be within contract expiry period</li>
+            </ul>
+            <p><strong>⚠️ Important Notes:</strong></p>
+            <ul>
+                <li>Only works for <strong>live/active F&O contracts</strong> (not expired)</li>
+                <li>Symbol token must be from NFO segment (Futures & Options)</li>
+                <li>Date range should be within the contract's trading period</li>
+                <li>Try using current month's option/future contracts</li>
+                <li>Example: NIFTY current month futures or weekly options</li>
+            </ul>
+        </div>
+
+        <div class="form-section">
+            <h3>📋 How to Find Symbol Tokens</h3>
+            <p>To get valid symbol tokens for F&O contracts:</p>
+            <ol>
+                <li>Download the instrument list from Angel One:
+                    <a href="https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json" target="_blank" style="color: #007bff; text-decoration: underline;">
+                        OpenAPI Scrip Master
+                    </a>
+                </li>
+                <li>Search for your desired contract (e.g., "NIFTY", "BANKNIFTY")</li>
+                <li>Filter by exchange: "NFO" and instrument type: "OPTIDX" or "FUTIDX"</li>
+                <li>Copy the "token" value from the JSON</li>
+                <li>Make sure the expiry date hasn't passed</li>
+            </ol>
+            <p><strong>Example:</strong> For NIFTY current month futures, look for entries with:
+                <code style="background: #f4f4f4; padding: 2px 6px; border-radius: 3px;">
+                    "name": "NIFTY", "exch_seg": "NFO", "instrumenttype": "FUTIDX"
+                </code>
+            </p>
+        </div>
+
+        <div class="form-section">
+            <h3>Fetch Historical OI Data</h3>
+            <form id="oiForm" onsubmit="fetchOIData(event)">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="symboltoken">Symbol Token *</label>
+                        <input type="text" id="symboltoken" name="symboltoken" required 
+                               placeholder="e.g., 46823">
+                        <small>Get token from instrument list</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="exchange">Exchange</label>
+                        <select id="exchange" name="exchange">
+                            <option value="NFO">NFO (F&O)</option>
+                            <option value="BSE">BSE</option>
+                            <option value="NSE">NSE</option>
+                            <option value="MCX">MCX</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="interval">Interval</label>
+                        <select id="interval" name="interval">
+                            <option value="ONE_MINUTE">1 Minute</option>
+                            <option value="THREE_MINUTE">3 Minutes</option>
+                            <option value="FIVE_MINUTE">5 Minutes</option>
+                            <option value="TEN_MINUTE">10 Minutes</option>
+                            <option value="FIFTEEN_MINUTE">15 Minutes</option>
+                            <option value="THIRTY_MINUTE">30 Minutes</option>
+                            <option value="ONE_HOUR">1 Hour</option>
+                            <option value="ONE_DAY" selected>1 Day</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="fromdate">From Date</label>
+                        <input type="datetime-local" id="fromdate" name="fromdate">
+                        <small>Format: YYYY-MM-DD HH:MM</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="todate">To Date</label>
+                        <input type="datetime-local" id="todate" name="todate">
+                        <small>Leave empty for last 7 days</small>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn">📈 Fetch OI Data</button>
+            </form>
+        </div>
+
+        <div id="resultContainer" class="result-container">
+            <h3>Historical Open Interest Data</h3>
+            <div id="resultContent"></div>
+        </div>
+    </div>
+
+    <script>
+        // Check if token was selected from scrip helper
+        window.addEventListener('DOMContentLoaded', () => {
+            const storedToken = sessionStorage.getItem('selected_token');
+            if (storedToken) {
+                const tokenField = document.getElementById('symboltoken');
+                if (tokenField) {
+                    tokenField.value = storedToken;
+                    sessionStorage.removeItem('selected_token');
+                    
+                    // Show notification
+                    const notification = document.createElement('div');
+                    notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #28a745; color: white; padding: 15px 25px; border-radius: 5px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); z-index: 9999;';
+                    notification.textContent = `✅ Token ${storedToken} auto-filled!`;
+                    document.body.appendChild(notification);
+                    
+                    setTimeout(() => {
+                        notification.remove();
+                    }, 3000);
+                }
+            }
+        });
+        
+        // Set default dates (last 7 days)
+        window.onload = function() {
+            const now = new Date();
+            const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            
+            document.getElementById('todate').value = formatDateTimeLocal(now);
+            document.getElementById('fromdate').value = formatDateTimeLocal(sevenDaysAgo);
+        };
+
+        function formatDateTimeLocal(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${year}-${month}-${day}T${hours}:${minutes}`;
+        }
+
+        function formatDateTimeForAPI(dateTimeLocal) {
+            if (!dateTimeLocal) return null;
+            const date = new Date(dateTimeLocal);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${year}-${month}-${day} ${hours}:${minutes}`;
+        }
+
+        function fetchOIData(event) {
+            event.preventDefault();
+
+            const symboltoken = document.getElementById('symboltoken').value;
+            const exchange = document.getElementById('exchange').value;
+            const interval = document.getElementById('interval').value;
+            const fromdate = formatDateTimeForAPI(document.getElementById('fromdate').value);
+            const todate = formatDateTimeForAPI(document.getElementById('todate').value);
+
+            const resultContainer = document.getElementById('resultContainer');
+            const resultContent = document.getElementById('resultContent');
+
+            resultContainer.classList.add('show');
+            resultContent.innerHTML = '<div class="loading">🔄 Fetching historical OI data...</div>';
+
+            document.querySelector('.btn').disabled = true;
+
+            const payload = {
+                symboltoken: symboltoken,
+                exchange: exchange,
+                interval: interval
+            };
+
+            if (fromdate) payload.fromdate = fromdate;
+            if (todate) payload.todate = todate;
+
+            fetch('/api/optionchain', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status && data.data) {
+                    displayOIData(data);
+                } else {
+                    let errorMsg = data.message || 'No data available';
+                    let errorCode = data.errorcode || '';
+                    
+                    let helpText = '';
+                    if (errorCode === 'AB1004') {
+                        helpText = `<br><br><strong>Possible Reasons:</strong><ul style="text-align: left; margin-top: 10px;">
+                            <li>The symbol token might be for an expired or inactive F&O contract</li>
+                            <li>Symbol token might not be from NFO segment</li>
+                            <li>Date range might be outside the contract's trading period</li>
+                            <li>API might be temporarily unavailable</li>
+                        </ul>
+                        <strong>💡 Tips:</strong><ul style="text-align: left;">
+                            <li>Use symbol tokens from currently active F&O contracts (check instrument list)</li>
+                            <li>Try current month NIFTY futures or weekly options</li>
+                            <li>Verify the contract hasn't expired yet</li>
+                            <li>Check if you're using the correct exchange (NFO)</li>
+                        </ul>`;
+                    }
+                    
+                    resultContent.innerHTML = `<div class="error-message">
+                        ❌ ${errorMsg}
+                        ${errorCode ? `<br><small>Error Code: ${errorCode}</small>` : ''}
+                        ${helpText}
+                    </div>`;
+                }
+                document.querySelector('.btn').disabled = false;
+            })
+            .catch(e => {
+                resultContent.innerHTML = `<div class="error-message">❌ Error: ${e.message}</div>`;
+                document.querySelector('.btn').disabled = false;
+            });
+        }
+
+        function displayOIData(data) {
+            const resultContent = document.getElementById('resultContent');
+            
+            let html = `
+                <div style="margin-bottom: 15px; padding: 10px; background: #d4edda; border-radius: 4px;">
+                    <strong>✅ Success:</strong> ${data.message || 'Data fetched successfully'}
+                </div>
+                <p><strong>Total Data Points:</strong> ${data.data.length}</p>
+            `;
+
+            if (data.data.length > 0) {
+                html += `
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Open Interest (OI)</th>
+                                <th>Change</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                let prevOI = null;
+                data.data.forEach(item => {
+                    const time = new Date(item.time).toLocaleString();
+                    const oi = item.oi.toLocaleString();
+                    let change = '-';
+                    let changeColor = '#333';
+
+                    if (prevOI !== null) {
+                        const diff = item.oi - prevOI;
+                        const pct = ((diff / prevOI) * 100).toFixed(2);
+                        change = `${diff.toLocaleString()} (${pct}%)`;
+                        changeColor = diff > 0 ? '#28a745' : diff < 0 ? '#dc3545' : '#333';
+                    }
+
+                    html += `
+                        <tr>
+                            <td>${time}</td>
+                            <td>${oi}</td>
+                            <td style="color: ${changeColor}; font-weight: bold;">${change}</td>
+                        </tr>
+                    `;
+                    prevOI = item.oi;
+                });
+
+                html += `
+                        </tbody>
+                    </table>
+                `;
+
+                // Summary statistics
+                const oiValues = data.data.map(d => d.oi);
+                const maxOI = Math.max(...oiValues);
+                const minOI = Math.min(...oiValues);
+                const avgOI = oiValues.reduce((a, b) => a + b, 0) / oiValues.length;
+
+                html += `
+                    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px;">
+                        <h4>📊 Summary Statistics</h4>
+                        <p><strong>Max OI:</strong> ${maxOI.toLocaleString()}</p>
+                        <p><strong>Min OI:</strong> ${minOI.toLocaleString()}</p>
+                        <p><strong>Average OI:</strong> ${Math.round(avgOI).toLocaleString()}</p>
+                        <p><strong>OI Range:</strong> ${(maxOI - minOI).toLocaleString()}</p>
+                    </div>
+                `;
+            } else {
+                html += '<p><em>No data points available for the selected range.</em></p>';
+            }
+
+            resultContent.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
