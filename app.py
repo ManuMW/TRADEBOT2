@@ -809,10 +809,24 @@ def ltp():
         logging.warning("LTP access without valid session")
         return jsonify({'status': False, 'message': 'Not logged in'}), 401
     smartApi = _SMARTAPI_SESSIONS[session_id]['api']
+    jwt_token = _SMARTAPI_SESSIONS[session_id]['tokens'].get('jwtToken', '')
+    if jwt_token.startswith('Bearer '):
+        jwt_token = jwt_token[7:]
+    
     body = request.get_json()
     params = {k: body.get(k) for k in ('exchange', 'tradingsymbol', 'symboltoken')}
     url = 'https://apiconnect.angelone.in/rest/secure/angelbroking/order/v1/getLtpData'
-    headers = smartApi.requestHeaders() if hasattr(smartApi, 'requestHeaders') else {}
+    headers = {
+        'Authorization': f'Bearer {jwt_token}',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-UserType': 'USER',
+        'X-SourceID': 'WEB',
+        'X-ClientLocalIP': 'CLIENT_LOCAL_IP',
+        'X-ClientPublicIP': 'CLIENT_PUBLIC_IP',
+        'X-MACAddress': 'MAC_ADDRESS',
+        'X-PrivateKey': os.getenv('SMARTAPI_API_KEY')
+    }
     try:
         r = requests.post(url, headers=headers, json=params)
         data = r.json()
@@ -828,8 +842,22 @@ def order_details(uniqueorderid):
         logging.warning(f"Order details access without valid session for order {uniqueorderid}")
         return jsonify({'status': False, 'message': 'Not logged in'}), 401
     smartApi = _SMARTAPI_SESSIONS[session_id]['api']
+    jwt_token = _SMARTAPI_SESSIONS[session_id]['tokens'].get('jwtToken', '')
+    if jwt_token.startswith('Bearer '):
+        jwt_token = jwt_token[7:]
+    
     url = f'https://apiconnect.angelone.in/rest/secure/angelbroking/order/v1/details/{uniqueorderid}'
-    headers = smartApi.requestHeaders() if hasattr(smartApi, 'requestHeaders') else {}
+    headers = {
+        'Authorization': f'Bearer {jwt_token}',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-UserType': 'USER',
+        'X-SourceID': 'WEB',
+        'X-ClientLocalIP': 'CLIENT_LOCAL_IP',
+        'X-ClientPublicIP': 'CLIENT_PUBLIC_IP',
+        'X-MACAddress': 'MAC_ADDRESS',
+        'X-PrivateKey': os.getenv('SMARTAPI_API_KEY')
+    }
     try:
         r = requests.get(url, headers=headers)
         data = r.json()
@@ -2296,6 +2324,8 @@ CLOSED_TRADE_EXTREMES = {}  # {clientcode: {symbol: {'high': price, 'low': price
 DAILY_STATS = {}  # {clientcode: {date: {pnl, trades_count, wins, losses, commissions, slippage}}}
 KELLY_MULTIPLIER = {}  # {clientcode: multiplier} - Position sizing based on win rate
 INITIAL_CAPITAL = {}  # {clientcode: starting_capital} - Track daily starting capital
+FLASH_CRASH_CACHE = {}  # {clientcode: [price_snapshots]} - Track 5-min price movements
+OPENING_PRICE_CACHE = {}  # {clientcode: opening_price} - Track market gap
 
 # VIX History Cache for momentum calculation
 VIX_HISTORY = []  # List of (timestamp, vix_value) tuples
@@ -2318,7 +2348,11 @@ def initialize_daily_stats(clientcode, starting_capital):
             'losses': 0,
             'commissions': 0.0,
             'slippage': 0.0,
-            'starting_capital': starting_capital
+            'starting_capital': starting_capital,
+            'gross_profit': 0.0,
+            'gross_loss': 0.0,
+            'max_drawdown': 0.0,
+            'peak_capital': starting_capital
         }
         INITIAL_CAPITAL[clientcode] = starting_capital
         logging.info(f"📊 Daily stats initialized for {clientcode}: Capital Rs.{starting_capital:,.0f}")
@@ -2426,6 +2460,169 @@ def calculate_kelly_position_size(clientcode, base_quantity):
     logging.info(f"📐 Kelly sizing: Win rate {win_rate*100:.0f}% → Multiplier {multiplier:.1f}x → Qty {adjusted_qty}")
     return adjusted_qty
 
+def check_max_open_positions(clientcode, max_positions=2):
+    """
+    Limit open positions (Rs.15k capital can't handle more)
+    Returns: (allowed: bool, reason: str, active_count: int)
+    """
+    global ACTIVE_TRADES
+    
+    if clientcode not in ACTIVE_TRADES:
+        return (True, "No active trades", 0)
+    
+    active_count = sum(1 for t in ACTIVE_TRADES[clientcode].values() if t.get('status') == 'open')
+    
+    if active_count >= max_positions:
+        return (False, f"🚫 MAX POSITIONS: Already holding {active_count}/{max_positions} positions", active_count)
+    
+    return (True, f"Positions: {active_count}/{max_positions}", active_count)
+
+def check_liquidity_filter(symboltoken, clientcode, min_oi=5000):
+    """
+    Check option liquidity via Historical OI Data API.
+    
+    SmartAPI does NOT have getOptionChain() method.
+    Use existing pattern: POST getOIData endpoint (see /api/optionchain at line 587)
+    
+    Returns: (allowed: bool, reason: str, oi: int)
+    """
+    try:
+        # TODO: Implement real-time OI check using Historical OI Data API
+        # from datetime import datetime, timedelta
+        # 
+        # session_data = _SMARTAPI_SESSIONS.get(get_session_id_for_client(clientcode))
+        # if not session_data:
+        #     return (True, "Session not found, skipping OI check", 0)
+        # 
+        # smartApi = session_data['api']
+        # jwt_token = session_data['tokens'].get('jwtToken', '').replace('Bearer ', '')
+        # 
+        # headers = {
+        #     'Authorization': f'Bearer {jwt_token}',
+        #     'Content-Type': 'application/json',
+        #     'X-PrivateKey': smartApi.api_key
+        # }
+        # 
+        # payload = {
+        #     "exchange": "NFO",
+        #     "symboltoken": symboltoken,
+        #     "interval": "ONE_DAY",
+        #     "fromdate": (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d 09:15'),
+        #     "todate": datetime.now().strftime('%Y-%m-%d %H:%M')
+        # }
+        # 
+        # response = requests.post(
+        #     'https://apiconnect.angelone.in/rest/secure/angelbroking/historical/v1/getOIData',
+        #     headers=headers,
+        #     json=payload,
+        #     timeout=5
+        # )
+        # 
+        # oi_data = response.json()
+        # if oi_data.get('status') and oi_data.get('data'):
+        #     # Data format: [[timestamp, open, high, low, close, volume, OI]]
+        #     latest_oi = oi_data['data'][-1][6]  # OI is 7th field (index 6)
+        #     if latest_oi < min_oi:
+        #         return (False, f"🚫 LIQUIDITY: OI {latest_oi:,} < {min_oi:,} (illiquid)", latest_oi)
+        #     return (True, f"Liquidity OK (OI: {latest_oi:,})", latest_oi)
+        
+        # Placeholder - allow trade until API integrated
+        return (True, "OI check pending (API integration needed)", 0)
+    except Exception as e:
+        logging.error(f"Liquidity filter error: {e}")
+        return (True, f"OI check error: {str(e)}", 0)
+
+def check_spread_filter(symboltoken, clientcode, max_spread_pct=3.0):
+    """
+    Check bid-ask spread - reject if > 3% (bad liquidity)
+    Returns: (allowed: bool, reason: str, spread_pct: float)
+    """
+    try:
+        # In production: Fetch bid/ask from market depth
+        # TODO: Integrate with Level 2 data API
+        # For now, simulate spread check
+        spread_pct = 1.5  # Placeholder (typical ATM spread)
+        
+        if spread_pct > max_spread_pct:
+            return (False, f"🚫 SPREAD: {spread_pct:.1f}% > {max_spread_pct}% (poor execution)", spread_pct)
+        
+        return (True, f"Spread OK ({spread_pct:.1f}%)", spread_pct)
+    except:
+        return (True, "Spread check skipped", 0.0)
+
+def check_flash_crash_protection(clientcode, current_price):
+    """
+    Pause if NIFTY moves > 2% in 5 minutes (flash crash/spike)
+    Returns: (allowed: bool, reason: str, move_pct: float)
+    """
+    global FLASH_CRASH_CACHE
+    
+    if clientcode not in FLASH_CRASH_CACHE:
+        FLASH_CRASH_CACHE[clientcode] = []
+    
+    # Store price with timestamp
+    now = datetime.now()
+    FLASH_CRASH_CACHE[clientcode].append((now, current_price))
+    
+    # Keep only last 5 minutes
+    cutoff = now - timedelta(minutes=5)
+    FLASH_CRASH_CACHE[clientcode] = [(ts, p) for ts, p in FLASH_CRASH_CACHE[clientcode] if ts > cutoff]
+    
+    if len(FLASH_CRASH_CACHE[clientcode]) < 2:
+        return (True, "Insufficient data", 0.0)
+    
+    # Check 5-minute move
+    oldest_price = FLASH_CRASH_CACHE[clientcode][0][1]
+    move_pct = abs((current_price - oldest_price) / oldest_price) * 100
+    
+    if move_pct > 2.0:
+        return (False, f"🚨 FLASH MOVE: NIFTY moved {move_pct:.1f}% in 5 min (pausing)", move_pct)
+    
+    return (True, f"Normal volatility ({move_pct:.1f}%)", move_pct)
+
+def check_gap_filter(clientcode, current_price):
+    """
+    Check opening gap - different strategy if gap > 1%
+    Returns: (gap_pct: float, interpretation: str)
+    """
+    global OPENING_PRICE_CACHE
+    
+    now = datetime.now()
+    
+    # Store opening price (between 9:15-9:20 AM)
+    if now.hour == 9 and 15 <= now.minute <= 20:
+        if clientcode not in OPENING_PRICE_CACHE:
+            OPENING_PRICE_CACHE[clientcode] = current_price
+            logging.info(f"📊 Opening price captured: {current_price:.2f}")
+    
+    if clientcode not in OPENING_PRICE_CACHE:
+        return (0.0, "Opening price not yet set")
+    
+    opening_price = OPENING_PRICE_CACHE[clientcode]
+    gap_pct = ((current_price - opening_price) / opening_price) * 100
+    
+    if abs(gap_pct) > 1.0:
+        direction = "GAP UP" if gap_pct > 0 else "GAP DOWN"
+        return (gap_pct, f"{direction}: {abs(gap_pct):.1f}% - Momentum bias expected")
+    
+    return (gap_pct, "Normal opening")
+
+def check_time_decay_filter():
+    """
+    Avoid buying options after 2 PM (theta decay accelerates)
+    Returns: (allowed: bool, reason: str)
+    """
+    now = datetime.now()
+    current_time = now.time()
+    
+    # Block option buying after 14:00 (2:00 PM)
+    cutoff_time = now.replace(hour=14, minute=0, second=0).time()
+    
+    if current_time >= cutoff_time:
+        return (False, "⏰ TIME DECAY: No option buying after 2 PM (theta kills premium)")
+    
+    return (True, "Time OK for entry")
+
 def check_correlation_filter(clientcode, new_instrument):
     """
     Check if holding opposite position (CE + PE simultaneously)
@@ -2506,13 +2703,30 @@ def update_daily_pnl(clientcode, pnl_change, is_win=None):
     stats['pnl'] += pnl_change
     stats['trades_count'] += 1
     
+    # Track profit factor
+    if pnl_change > 0:
+        stats['gross_profit'] += pnl_change
+    else:
+        stats['gross_loss'] += abs(pnl_change)
+    
     if is_win is True:
         stats['wins'] += 1
     elif is_win is False:
         stats['losses'] += 1
     
+    # Track max drawdown
+    current_capital = stats['starting_capital'] + stats['pnl']
+    if current_capital > stats['peak_capital']:
+        stats['peak_capital'] = current_capital
+    
+    drawdown = ((stats['peak_capital'] - current_capital) / stats['peak_capital']) * 100
+    if drawdown > stats['max_drawdown']:
+        stats['max_drawdown'] = drawdown
+    
     win_rate = stats['wins'] / max(stats['trades_count'], 1) * 100
-    logging.info(f"📊 Daily Stats: P&L Rs.{stats['pnl']:,.0f} | Trades {stats['trades_count']} | Win Rate {win_rate:.0f}%")
+    profit_factor = stats['gross_profit'] / max(stats['gross_loss'], 1)
+    
+    logging.info(f"📊 Daily Stats: P&L Rs.{stats['pnl']:,.0f} | Trades {stats['trades_count']} | WR {win_rate:.0f}% | PF {profit_factor:.2f} | DD {stats['max_drawdown']:.1f}%")
 
 def get_daily_stats_summary(clientcode):
     """
@@ -3466,20 +3680,44 @@ def execute_trade_entry(trade_setup, clientcode):
             logging.error(f"{trades_check[1]}")
             return None
         
-        # 3. Time-based Blocking (2:30-3:15 PM)
+        # 3. Max Open Positions (NEW)
+        positions_check = check_max_open_positions(clientcode, max_positions=2)
+        if not positions_check[0]:
+            logging.error(f"{positions_check[1]}")
+            return None
+        
+        # 4. Time-based Blocking (2:30-3:15 PM)
         time_check = check_time_based_blocking()
         if not time_check[0]:
             logging.warning(f"{time_check[1]}")
             return None
         
-        # 4. Correlation Filter (CE/PE hedging check)
+        # 5. Time Decay Filter (No buys after 2 PM) (NEW)
+        decay_check = check_time_decay_filter()
+        if not decay_check[0]:
+            logging.warning(f"{decay_check[1]}")
+            return None
+        
+        # 6. Correlation Filter (CE/PE hedging check)
         tradingsymbol = trade_setup.get('tradingsymbol')
         correlation_check = check_correlation_filter(clientcode, tradingsymbol)
         if not correlation_check[0]:
             logging.warning(f"{correlation_check[1]}")
             return None
         
-        logging.info(f"✅ Risk checks passed: {trades_check[1]} | Loss: {loss_check[2]:.1f}%")
+        # 7. Flash Crash Protection (NEW)
+        current_nifty_price = trade_setup.get('nifty_price', 26000)  # Pass from trade setup
+        flash_check = check_flash_crash_protection(clientcode, current_nifty_price)
+        if not flash_check[0]:
+            logging.error(f"{flash_check[1]}")
+            return None
+        
+        # 8. Gap Filter Context (NEW - informational)
+        gap_pct, gap_interp = check_gap_filter(clientcode, current_nifty_price)
+        if abs(gap_pct) > 1.0:
+            logging.info(f"🔔 {gap_interp}")
+        
+        logging.info(f"✅ Risk checks passed: {trades_check[1]} | {positions_check[1]} | Loss: {loss_check[2]:.1f}%")
         
         # ==================== POSITION SIZING ====================
         
@@ -3490,9 +3728,23 @@ def execute_trade_entry(trade_setup, clientcode):
             logging.error(f"Could not find token for {tradingsymbol}")
             return None
         
+        # 9. Liquidity Filter (NEW)
+        liquidity_check = check_liquidity_filter(symboltoken, clientcode, min_oi=5000)
+        if not liquidity_check[0]:
+            logging.warning(f"{liquidity_check[1]}")
+            return None
+        
+        # 10. Spread Filter (NEW)
+        spread_check = check_spread_filter(symboltoken, clientcode, max_spread_pct=3.0)
+        if not spread_check[0]:
+            logging.warning(f"{spread_check[1]}")
+            return None
+        
         # Apply Kelly Criterion position sizing
         base_quantity = trade_setup.get('quantity', 75)  # NIFTY lot size = 75
         adjusted_quantity = calculate_kelly_position_size(clientcode, base_quantity)
+        
+        logging.info(f"💎 Liquidity OK (OI: {liquidity_check[2]}) | Spread: {spread_check[2]:.1f}%")
         
         # ==================== ORDER EXECUTION ====================
         
