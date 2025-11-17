@@ -145,7 +145,11 @@ response2 = openai_client.chat.completions.create(
     max_tokens=2000
 )
 
-parsed_json = response2.choices[0].message.content.strip()
+content = response2.choices[0].message.content
+if not content:
+    raise ValueError("OpenAI returned empty content")
+
+parsed_json = content.strip()
 
 # Remove markdown code blocks if present
 if parsed_json.startswith("```"):
@@ -167,11 +171,11 @@ try:
     # Check key fields
     for i, trade in enumerate(parsed_data.get('trades', []), 1):
         print(f"\nTrade {i} Validation:")
-        print(f"  ✓ tradingsymbol: {trade.get('tradingsymbol', 'MISSING')}")
-        print(f"  ✓ entry_price: {trade.get('entry_price', 'MISSING')}")
-        print(f"  ✓ entry_conditions: {trade.get('entry_conditions', 'MISSING')}")
-        print(f"  ✓ stop_loss: {trade.get('stop_loss', 'MISSING')}")
-        print(f"  ✓ target_1: {trade.get('target_1', 'MISSING')}")
+        print(f"  [OK] tradingsymbol: {trade.get('tradingsymbol', 'MISSING')}")
+        print(f"  [OK] entry_price: {trade.get('entry_price', 'MISSING')}")
+        print(f"  [OK] entry_conditions: {trade.get('entry_conditions', 'MISSING')}")
+        print(f"  [OK] stop_loss: {trade.get('stop_loss', 'MISSING')}")
+        print(f"  [OK] target_1: {trade.get('target_1', 'MISSING')}")
         
 except json.JSONDecodeError as e:
     print(f"\nVALIDATION FAILED: {e}")

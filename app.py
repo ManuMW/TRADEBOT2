@@ -1877,9 +1877,15 @@ def get_comprehensive_trading_data():
     try:
         comprehensive_data = {}
         
+        # Helper to extract JSON from Flask response (handles both Response and tuple)
+        def extract_json(response):
+            if isinstance(response, tuple):
+                return response[0].get_json()
+            return response.get_json()
+        
         # 1. Fetch historical candles
         candles_response = get_historical_candles()
-        candles_json = candles_response.get_json()
+        candles_json = extract_json(candles_response)
         comprehensive_data['candles'] = candles_json
         
         # 2. Calculate technical indicators from candles
@@ -1888,28 +1894,28 @@ def get_comprehensive_trading_data():
             # Manually call the function
             with app.test_request_context(json=indicators_body):
                 indicators_response = calculate_technical_indicators()
-                comprehensive_data['indicators'] = indicators_response.get_json()
+                comprehensive_data['indicators'] = extract_json(indicators_response)
         
         # 3. Get Option Greeks (if expiry provided)
         if expiry:
             with app.test_request_context(json={'name': 'NIFTY', 'expirydate': expiry}):
                 greeks_response = get_option_greeks()
-                comprehensive_data['greeks'] = greeks_response.get_json()
+                comprehensive_data['greeks'] = extract_json(greeks_response)
                 
                 # Calculate PCR if Greeks available
-                greeks_json = greeks_response.get_json()
+                greeks_json = extract_json(greeks_response)
                 if greeks_json.get('status') and greeks_json.get('data'):
                     with app.test_request_context(json={'data': greeks_json['data']}):
                         pcr_response = calculate_pcr()
-                        comprehensive_data['pcr'] = pcr_response.get_json()
+                        comprehensive_data['pcr'] = extract_json(pcr_response)
         
         # 4. Get VIX
         vix_response = get_india_vix()
-        comprehensive_data['vix'] = vix_response.get_json()
+        comprehensive_data['vix'] = extract_json(vix_response)
         
         # 5. Get Global Markets
         global_response = get_global_markets()
-        comprehensive_data['global_markets'] = global_response.get_json()
+        comprehensive_data['global_markets'] = extract_json(global_response)
         
         # 6. Get RMS data
         conn = sqlite3.connect(DB_FILE)
@@ -2000,17 +2006,17 @@ def get_ai_trading_recommendation():
         
         # VIX momentum interpretation
         vix_momentum_str = {
-            'rising': '📈 RISING (Fear increasing - bigger moves coming, hold longer)',
-            'falling': '📉 FALLING (Fear subsiding - book early, tighten stops)',
-            'stable': '➡️ STABLE (Neutral momentum)',
-            'unknown': '❓ UNKNOWN (Insufficient data)'
+            'rising': '[UP] RISING (Fear increasing - bigger moves coming, hold longer)',
+            'falling': '[DOWN] FALLING (Fear subsiding - book early, tighten stops)',
+            'stable': '[NEUTRAL] STABLE (Neutral momentum)',
+            'unknown': '[UNKNOWN] UNKNOWN (Insufficient data)'
         }.get(vix_momentum, 'Unknown')
         
         # Trend interpretation
         trend_str = {
-            'bullish': '🟢 BULLISH (EMA9 > EMA21, prefer CE trades)',
-            'bearish': '🔴 BEARISH (EMA9 < EMA21, prefer PE trades)',
-            'neutral': '⚪ NEUTRAL (No clear trend, wait for setup)'
+            'bullish': '[BULLISH] BULLISH (EMA9 > EMA21, prefer CE trades)',
+            'bearish': '[BEARISH] BEARISH (EMA9 < EMA21, prefer PE trades)',
+            'neutral': '[NEUTRAL] NEUTRAL (No clear trend, wait for setup)'
         }.get(trend_direction, 'Unknown')
         
         # Get today's performance stats for AI context
@@ -2020,7 +2026,7 @@ def get_ai_trading_recommendation():
             daily_stats = get_daily_stats_summary(clientcode)
         
         # Performance interpretation for AI
-        perf_str = "📊 TODAY'S PERFORMANCE: No trades yet (fresh start)"
+        perf_str = "[STATS] TODAY'S PERFORMANCE: No trades yet (fresh start)"
         kelly_advice = ""
         risk_warning = ""
         
@@ -2031,49 +2037,49 @@ def get_ai_trading_recommendation():
             
             # Performance color coding
             if pnl_pct > 5:
-                perf_emoji = "🔥"
+                perf_emoji = "[HOT]"
                 perf_state = "EXCELLENT"
             elif pnl_pct > 0:
-                perf_emoji = "✅"
+                perf_emoji = "[OK]"
                 perf_state = "PROFITABLE"
             elif pnl_pct > -3:
-                perf_emoji = "⚠️"
+                perf_emoji = "[WARNING]"
                 perf_state = "SLIGHTLY NEGATIVE"
             else:
-                perf_emoji = "🚨"
+                perf_emoji = "[ALERT]"
                 perf_state = "LOSING"
             
-            perf_str = f"""📊 TODAY'S PERFORMANCE ({perf_state}):
+            perf_str = f"""[STATS] TODAY'S PERFORMANCE ({perf_state}):
 {perf_emoji} P&L: Rs.{daily_stats['pnl']:,.0f} ({pnl_pct:+.1f}%)
-📈 Win Rate: {win_rate:.0f}% ({daily_stats['wins']}W / {daily_stats['losses']}L)
-📉 Trades: {daily_stats['trades']}/15 executed
-💰 Costs: Commissions Rs.{daily_stats['commissions']:.0f} + Slippage Rs.{daily_stats['slippage']:.0f}
-🎯 Net P&L: Rs.{daily_stats['net_pnl']:,.0f}"""
+[UP] Win Rate: {win_rate:.0f}% ({daily_stats['wins']}W / {daily_stats['losses']}L)
+[DOWN] Trades: {daily_stats['trades']}/15 executed
+[MONEY] Costs: Commissions Rs.{daily_stats['commissions']:.0f} + Slippage Rs.{daily_stats['slippage']:.0f}
+[TARGET] Net P&L: Rs.{daily_stats['net_pnl']:,.0f}"""
             
             # Kelly position sizing advice
             if kelly_mult > 1.0:
-                kelly_advice = f"\n💪 KELLY SIGNAL: Size up {kelly_mult:.1f}x (strong performance, {win_rate:.0f}% WR)"
+                kelly_advice = f"\n[STRONG] KELLY SIGNAL: Size up {kelly_mult:.1f}x (strong performance, {win_rate:.0f}% WR)"
             elif kelly_mult < 1.0:
-                kelly_advice = f"\n⚠️ KELLY SIGNAL: Size down {kelly_mult:.1f}x (poor performance, {win_rate:.0f}% WR)"
+                kelly_advice = f"\n[WARNING] KELLY SIGNAL: Size down {kelly_mult:.1f}x (poor performance, {win_rate:.0f}% WR)"
             
             # Risk warnings
             loss_check = check_daily_loss_circuit_breaker(clientcode)
             if not loss_check[0]:
-                risk_warning = f"\n🚨 CIRCUIT BREAKER ACTIVE: {loss_check[1]} - NO NEW TRADES ALLOWED"
+                risk_warning = f"\n[ALERT] CIRCUIT BREAKER ACTIVE: {loss_check[1]} - NO NEW TRADES ALLOWED"
             elif abs(loss_check[2]) > 7:
-                risk_warning = f"\n⚠️ WARNING: Daily loss at {loss_check[2]:.1f}% (circuit breaker at -10%)"
+                risk_warning = f"\n[WARNING] WARNING: Daily loss at {loss_check[2]:.1f}% (circuit breaker at -10%)"
             
             trades_check = check_max_trades_limit(clientcode)
             if not trades_check[0]:
-                risk_warning += f"\n🚨 MAX TRADES REACHED: {trades_check[1]}"
+                risk_warning += f"\n[ALERT] MAX TRADES REACHED: {trades_check[1]}"
             elif trades_check[2] >= 12:
-                risk_warning += f"\n⚠️ HIGH TRADE COUNT: {trades_check[2]}/15 (be selective)"
+                risk_warning += f"\n[WARNING] HIGH TRADE COUNT: {trades_check[2]}/15 (be selective)"
         
         # Get fundamental context (events, news, economic calendar)
         fundamental_ctx = fetch_fundamental_context()
         events_str = ""
         if fundamental_ctx['events']:
-            events_str = "\n\n📰 TODAY'S EVENTS & CONTEXT:\n"
+            events_str = "\n\n[NEWS] TODAY'S EVENTS & CONTEXT:\n"
             for event in fundamental_ctx['events']:
                 events_str += f"• [{event['type']}] {event['description']}\n  Impact: {event['impact']}\n"
             events_str += f"• US Market: {fundamental_ctx.get('us_market_sentiment', 'N/A')}\n"
@@ -2088,9 +2094,9 @@ MAX PER TRADE: Rs.{max_per_trade:,.0f} (50% of capital)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 MARKET CONTEXT:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 CURRENT VIX: {current_vix:.2f if current_vix else 'N/A'} - {vix_interpretation}
-📊 VIX MOMENTUM: {vix_momentum_str}
-📈 TREND: {trend_str}
+[TARGET] CURRENT VIX: {current_vix:.2f if current_vix else 'N/A'} - {vix_interpretation}
+[STATS] VIX MOMENTUM: {vix_momentum_str}
+[UP] TREND: {trend_str}
 
 {perf_str}{kelly_advice}{risk_warning}{events_str}
 
@@ -2330,6 +2336,16 @@ OPENING_PRICE_CACHE = {}  # {clientcode: opening_price} - Track market gap
 # VIX History Cache for momentum calculation
 VIX_HISTORY = []  # List of (timestamp, vix_value) tuples
 
+# NEW: Advanced Risk Management & Performance Tracking
+CONSECUTIVE_LOSSES = {}  # {clientcode: count} - Track loss streaks
+PEAK_DAILY_PROFIT = {}  # {clientcode: peak_profit} - Profit protect mode
+IV_PERCENTILE_CACHE = {}  # {symboltoken: {iv_rank, timestamp}} - Cache IV rankings
+TRADE_PATTERN_STATS = {}  # {clientcode: {pattern_type: {wins, losses, pnl}}} - Track by setup type
+POSITION_ENTRY_TIME = {}  # {clientcode: {trade_id: entry_timestamp}} - Time-based profit taking
+VOLUME_BASELINE = {}  # {symboltoken: avg_volume} - Volume confirmation baseline
+TRAILING_STOPS = {}  # {clientcode: {trade_id: {'initial_sl': X, 'trailing_sl': Y, 'peak_profit_pct': Z}}}
+MULTI_TF_CACHE = {}  # {symbol: {timeframe: trend_direction}} - Multi-timeframe confirmation
+
 # ==================== RISK MANAGEMENT FUNCTIONS ====================
 
 def initialize_daily_stats(clientcode, starting_capital):
@@ -2355,7 +2371,7 @@ def initialize_daily_stats(clientcode, starting_capital):
             'peak_capital': starting_capital
         }
         INITIAL_CAPITAL[clientcode] = starting_capital
-        logging.info(f"📊 Daily stats initialized for {clientcode}: Capital Rs.{starting_capital:,.0f}")
+        logging.info(f"[STATS] Daily stats initialized for {clientcode}: Capital Rs.{starting_capital:,.0f}")
 
 def check_daily_loss_circuit_breaker(clientcode, loss_limit_pct=10.0):
     """
@@ -2374,7 +2390,7 @@ def check_daily_loss_circuit_breaker(clientcode, loss_limit_pct=10.0):
     loss_pct = (current_pnl / starting_capital) * 100
     
     if loss_pct < -loss_limit_pct:
-        return (False, f"🛑 CIRCUIT BREAKER: Daily loss {loss_pct:.1f}% exceeds limit -{loss_limit_pct}%", loss_pct)
+        return (False, f"[STOP] CIRCUIT BREAKER: Daily loss {loss_pct:.1f}% exceeds limit -{loss_limit_pct}%", loss_pct)
     
     return (True, "Within limits", loss_pct)
 
@@ -2395,9 +2411,9 @@ def check_max_trades_limit(clientcode, max_trades=10, extended_max=15):
     
     # Allow extended trades if win rate > 60%
     if trades_count >= extended_max:
-        return (False, f"🛑 MAX TRADES: {trades_count}/{extended_max} trades executed today", trades_count)
+        return (False, f"[STOP] MAX TRADES: {trades_count}/{extended_max} trades executed today", trades_count)
     elif trades_count >= max_trades and win_rate < 0.6:
-        return (False, f"⚠️ MAX TRADES: {trades_count}/{max_trades} (win rate {win_rate*100:.0f}% < 60%)", trades_count)
+        return (False, f"[WARNING] MAX TRADES: {trades_count}/{max_trades} (win rate {win_rate*100:.0f}% < 60%)", trades_count)
     
     return (True, f"Trades: {trades_count}/{extended_max}", trades_count)
 
@@ -2576,7 +2592,7 @@ def check_flash_crash_protection(clientcode, current_price):
     move_pct = abs((current_price - oldest_price) / oldest_price) * 100
     
     if move_pct > 2.0:
-        return (False, f"🚨 FLASH MOVE: NIFTY moved {move_pct:.1f}% in 5 min (pausing)", move_pct)
+        return (False, f"[ALERT] FLASH MOVE: NIFTY moved {move_pct:.1f}% in 5 min (pausing)", move_pct)
     
     return (True, f"Normal volatility ({move_pct:.1f}%)", move_pct)
 
@@ -2593,7 +2609,7 @@ def check_gap_filter(clientcode, current_price):
     if now.hour == 9 and 15 <= now.minute <= 20:
         if clientcode not in OPENING_PRICE_CACHE:
             OPENING_PRICE_CACHE[clientcode] = current_price
-            logging.info(f"📊 Opening price captured: {current_price:.2f}")
+            logging.info(f"[STATS] Opening price captured: {current_price:.2f}")
     
     if clientcode not in OPENING_PRICE_CACHE:
         return (0.0, "Opening price not yet set")
@@ -2619,7 +2635,7 @@ def check_time_decay_filter():
     cutoff_time = now.replace(hour=14, minute=0, second=0).time()
     
     if current_time >= cutoff_time:
-        return (False, "⏰ TIME DECAY: No option buying after 2 PM (theta kills premium)")
+        return (False, "[TIME] TIME DECAY: No option buying after 2 PM (theta kills premium)")
     
     return (True, "Time OK for entry")
 
@@ -2684,7 +2700,7 @@ def track_commission(clientcode, num_orders=1, commission_per_order=20):
     total_commission = num_orders * commission_per_order
     DAILY_STATS[clientcode][today]['commissions'] += total_commission
     
-    logging.info(f"💰 Commission: Rs.{total_commission} ({num_orders} orders × Rs.{commission_per_order})")
+    logging.info(f"[MONEY] Commission: Rs.{total_commission} ({num_orders} orders × Rs.{commission_per_order})")
     return total_commission
 
 def update_daily_pnl(clientcode, pnl_change, is_win=None):
@@ -2726,7 +2742,7 @@ def update_daily_pnl(clientcode, pnl_change, is_win=None):
     win_rate = stats['wins'] / max(stats['trades_count'], 1) * 100
     profit_factor = stats['gross_profit'] / max(stats['gross_loss'], 1)
     
-    logging.info(f"📊 Daily Stats: P&L Rs.{stats['pnl']:,.0f} | Trades {stats['trades_count']} | WR {win_rate:.0f}% | PF {profit_factor:.2f} | DD {stats['max_drawdown']:.1f}%")
+    logging.info(f"[STATS] Daily Stats: P&L Rs.{stats['pnl']:,.0f} | Trades {stats['trades_count']} | WR {win_rate:.0f}% | PF {profit_factor:.2f} | DD {stats['max_drawdown']:.1f}%")
 
 def get_daily_stats_summary(clientcode):
     """
@@ -2836,6 +2852,473 @@ def get_vix_momentum():
     except Exception as e:
         logging.error(f"VIX momentum calculation error: {e}")
         return 'unknown'
+
+# ==================== NEW: ADVANCED RISK MANAGEMENT & ENHANCEMENTS ====================
+
+def check_consecutive_loss_limit(clientcode, max_consecutive=3):
+    """
+    25. Consecutive Loss Limit - Stop trading after N consecutive losses
+    
+    Prevents emotional/revenge trading after losing streak
+    Returns: (allowed: bool, reason: str, streak: int)
+    """
+    global CONSECUTIVE_LOSSES
+    
+    if clientcode not in CONSECUTIVE_LOSSES:
+        CONSECUTIVE_LOSSES[clientcode] = 0
+    
+    streak = CONSECUTIVE_LOSSES[clientcode]
+    
+    if streak >= max_consecutive:
+        return (False, f"[STOP] CONSECUTIVE LOSSES: {streak} losses in a row - PAUSED for emotional protection", streak)
+    
+    return (True, f"Loss streak: {streak}/{max_consecutive}", streak)
+
+def update_loss_streak(clientcode, is_win):
+    """Update consecutive loss counter"""
+    global CONSECUTIVE_LOSSES
+    
+    if clientcode not in CONSECUTIVE_LOSSES:
+        CONSECUTIVE_LOSSES[clientcode] = 0
+    
+    if is_win:
+        CONSECUTIVE_LOSSES[clientcode] = 0  # Reset on win
+        logging.info(f"[OK] Win! Loss streak reset for {clientcode}")
+    else:
+        CONSECUTIVE_LOSSES[clientcode] += 1
+        logging.warning(f"[FAIL] Loss #{CONSECUTIVE_LOSSES[clientcode]} for {clientcode}")
+
+def check_profit_protect_mode(clientcode):
+    """
+    26. Profit Protect Mode - Lock in daily profits
+    
+    After reaching good profit, protect against giving it all back
+    Returns: (protected_capital: float, risk_reduction_pct: float, status: str)
+    """
+    global PEAK_DAILY_PROFIT, DAILY_STATS
+    
+    today = datetime.now().date().isoformat()
+    
+    if clientcode not in DAILY_STATS or today not in DAILY_STATS[clientcode]:
+        return (0, 0, "NO_PROFIT_YET")
+    
+    current_pnl = DAILY_STATS[clientcode][today]['pnl']
+    
+    # Track peak profit
+    if clientcode not in PEAK_DAILY_PROFIT:
+        PEAK_DAILY_PROFIT[clientcode] = 0
+    
+    if current_pnl > PEAK_DAILY_PROFIT[clientcode]:
+        PEAK_DAILY_PROFIT[clientcode] = current_pnl
+    
+    peak = PEAK_DAILY_PROFIT[clientcode]
+    
+    # Profit protect rules
+    if peak >= 5000:  # If made Rs.5000+ today
+        drawdown_from_peak = peak - current_pnl
+        drawdown_pct = (drawdown_from_peak / peak) * 100 if peak > 0 else 0
+        
+        if drawdown_pct > 40:  # Given back 40% of peak profit
+            return (peak * 0.6, 100, "STOP_TRADING")  # Stop for the day
+        elif drawdown_pct > 25:  # Given back 25%
+            return (peak * 0.75, 50, "REDUCE_RISK")  # Reduce position sizes by 50%
+        elif peak >= 5000:
+            return (peak, 30, "PROTECT_MODE")  # Only risk 30% of profits
+    
+    return (0, 0, "NORMAL")
+
+def get_time_of_day_adjustment():
+    """
+    2. Time-of-Day Volatility Adjustment
+    
+    Returns: (sl_multiplier, target_multiplier, description)
+    """
+    now = datetime.now()
+    current_time = now.time()
+    
+    # Define time windows
+    opening_start = now.replace(hour=9, minute=15).time()
+    opening_end = now.replace(hour=10, minute=30).time()
+    midday_end = now.replace(hour=14, minute=0).time()
+    closing_start = now.replace(hour=14, minute=0).time()
+    
+    if opening_start <= current_time < opening_end:
+        # 09:15-10:30: High volatility opening
+        return (1.25, 1.15, "OPENING_VOLATILITY")  # Wider SL, higher targets
+    elif current_time < midday_end:
+        # 10:30-14:00: Mid-day calm
+        return (0.85, 1.0, "MIDDAY_CALM")  # Tighter SL, standard targets
+    elif closing_start <= current_time:
+        # 14:00-15:30: Closing rush
+        return (1.1, 1.05, "CLOSING_RUSH")  # Medium SL, quick exits
+    
+    return (1.0, 1.0, "STANDARD")
+
+def check_volume_confirmation(symboltoken, clientcode):
+    """
+    3. Volume Confirmation - Reject low volume trades
+    
+    NOTE: Requires historical volume data from getCandleData API
+    For now, this is a placeholder for future implementation
+    
+    Returns: (allowed: bool, reason: str, volume_ratio: float)
+    """
+    try:
+        # TODO: When implementing, fetch historical candles and compare volumes
+        # Use getCandleData API with FIVE_MINUTE interval for last 5 days
+        # Calculate average volume and compare to current
+        
+        # Placeholder - allow trade
+        return (True, "Volume check pending (needs historical data API)", 1.0)
+        
+    except Exception as e:
+        logging.error(f"Volume confirmation error: {e}")
+        return (True, f"Volume check error: {str(e)}", 1.0)
+
+def check_breakout_confirmation(clientcode, symbol, current_price, breakout_level, direction='bullish'):
+    """
+    4. Breakout Confirmation - Wait for firm break with buffer
+    
+    Simplified version: Check if price firmly above/below level (0.2% buffer)
+    Full version would wait for 15-min candle close
+    
+    Returns: (confirmed: bool, reason: str)
+    """
+    try:
+        buffer = breakout_level * 0.002  # 0.2% buffer
+        
+        if direction == 'bullish' and current_price > (breakout_level + buffer):
+            return (True, f"[OK] Breakout confirmed: {current_price:.0f} > {breakout_level:.0f}")
+        elif direction == 'bearish' and current_price < (breakout_level - buffer):
+            return (True, f"[OK] Breakdown confirmed: {current_price:.0f} < {breakout_level:.0f}")
+        else:
+            return (False, f"Waiting for clear break (need 0.2% buffer)")
+            
+    except Exception as e:
+        logging.error(f"Breakout confirmation error: {e}")
+        return (True, f"Breakout check error: {str(e)}")
+
+def check_multi_timeframe_confirmation(symbol='NIFTY'):
+    """
+    5. Multi-Timeframe Confirmation - Align 5min, 15min, 1hour trends
+    
+    NOTE: Requires fetching candles for multiple intervals
+    For now, placeholder for future implementation
+    
+    Returns: (aligned: bool, reason: str, trends: dict)
+    """
+    try:
+        # TODO: Fetch and analyze multiple timeframes
+        # Use getCandleData with FIVE_MINUTE, FIFTEEN_MINUTE, ONE_HOUR
+        # Calculate EMA trend for each
+        
+        # Placeholder - allow trade
+        return (True, "Multi-TF check pending (needs multiple interval data)", {})
+        
+    except Exception as e:
+        logging.error(f"Multi-timeframe confirmation error: {e}")
+        return (True, f"Multi-TF error: {str(e)}", {})
+
+def calculate_iv_percentile(symbol, strike, expiry, current_iv):
+    """
+    6. IV Percentile Ranking - Compare current IV to 30-day range
+    
+    NOTE: Requires tracking historical IV daily for 30 days
+    Not directly available in SmartAPI - would need to store daily
+    
+    Returns: (iv_rank: float, recommendation: str)
+    """
+    try:
+        # TODO: Build historical IV database
+        # Track daily IV for each strike for 30 days
+        # Calculate percentile rank
+        
+        # Placeholder - assume moderate IV
+        return (50, "IV ranking pending (needs 30-day IV history database)")
+        
+    except Exception as e:
+        logging.error(f"IV percentile error: {e}")
+        return (50, f"IV check error: {str(e)}")
+
+def adjust_position_size_by_greeks(base_quantity, delta):
+    """
+    7. Greeks-Based Position Sizing - Adjust based on Delta
+    
+    High Delta options behave like stock - reduce size
+    Low Delta options have less directional risk
+    
+    Returns: adjusted_quantity
+    """
+    try:
+        if delta is None or delta == 0:
+            return base_quantity
+        
+        abs_delta = abs(delta)
+        
+        if abs_delta > 0.7:  # Deep ITM - acts like stock
+            multiplier = 0.7  # Reduce to 70%
+            reason = f"High Delta ({abs_delta:.2f}) - reduced size"
+        elif abs_delta < 0.3:  # Deep OTM - risky
+            multiplier = 0.5  # Reduce to 50%
+            reason = f"Low Delta ({abs_delta:.2f}) - very OTM, reduced size"
+        else:  # Sweet spot 0.3-0.7
+            multiplier = 1.0
+            reason = f"Good Delta ({abs_delta:.2f}) - standard size"
+        
+        adjusted = int(base_quantity * multiplier)
+        logging.info(f"💎 GREEKS SIZING: {reason} | {base_quantity} → {adjusted}")
+        
+        return adjusted
+        
+    except Exception as e:
+        logging.error(f"Greeks sizing error: {e}")
+        return base_quantity
+
+def calculate_support_resistance_levels(candles_data):
+    """
+    8. Support/Resistance Levels - Enhanced calculation
+    
+    Uses pivot points, Fibonacci, and recent highs/lows
+    NOTE: Basic pivot points already in indicators
+    
+    Returns: {'pivots': {}, 'fibonacci': {}, 'recent': {}}
+    """
+    try:
+        if not candles_data or len(candles_data) < 20:
+            return {}
+        
+        # Get recent data
+        recent_20 = candles_data[-20:]
+        highs = [c[2] for c in recent_20]  # High is 3rd field
+        lows = [c[3] for c in recent_20]   # Low is 4th field
+        closes = [c[4] for c in recent_20]  # Close is 5th field
+        
+        last_high = recent_20[-1][2]
+        last_low = recent_20[-1][3]
+        last_close = recent_20[-1][4]
+        
+        # Pivot Points
+        pivot = (last_high + last_low + last_close) / 3
+        r1 = 2 * pivot - last_low
+        r2 = pivot + (last_high - last_low)
+        r3 = r1 + (last_high - last_low)
+        s1 = 2 * pivot - last_high
+        s2 = pivot - (last_high - last_low)
+        s3 = s1 - (last_high - last_low)
+        
+        # Fibonacci Retracements
+        swing_high = max(highs)
+        swing_low = min(lows)
+        diff = swing_high - swing_low
+        
+        fib_levels = {
+            'fib_0': swing_high,
+            'fib_23.6': swing_high - (diff * 0.236),
+            'fib_38.2': swing_high - (diff * 0.382),
+            'fib_50': swing_high - (diff * 0.5),
+            'fib_61.8': swing_high - (diff * 0.618),
+            'fib_100': swing_low
+        }
+        
+        # Recent significant levels
+        recent_levels = {
+            'swing_high': swing_high,
+            'swing_low': swing_low,
+            'prev_day_high': highs[-2] if len(highs) > 1 else last_high,
+            'prev_day_low': lows[-2] if len(lows) > 1 else last_low
+        }
+        
+        return {
+            'pivots': {'pivot': pivot, 'r1': r1, 'r2': r2, 'r3': r3, 's1': s1, 's2': s2, 's3': s3},
+            'fibonacci': fib_levels,
+            'recent': recent_levels
+        }
+        
+    except Exception as e:
+        logging.error(f"Support/Resistance calculation error: {e}")
+        return {}
+
+def update_trailing_stop(clientcode, trade_id, current_price, entry_price, current_sl):
+    """
+    1. Dynamic Trailing Stop Loss
+    
+    Trail stop loss as profit increases:
+    - At +10% profit: Move SL to breakeven
+    - At +20% profit: Trail SL to +10%
+    - At +30% profit: Trail SL to +15%
+    
+    Returns: new_stop_loss
+    """
+    global TRAILING_STOPS
+    
+    try:
+        if clientcode not in TRAILING_STOPS:
+            TRAILING_STOPS[clientcode] = {}
+        
+        if trade_id not in TRAILING_STOPS[clientcode]:
+            TRAILING_STOPS[clientcode][trade_id] = {
+                'initial_sl': current_sl,
+                'trailing_sl': current_sl,
+                'peak_profit_pct': 0
+            }
+        
+        trade_trail = TRAILING_STOPS[clientcode][trade_id]
+        
+        # Calculate profit percentage
+        profit_pct = ((current_price - entry_price) / entry_price) * 100
+        
+        # Update peak profit
+        if profit_pct > trade_trail['peak_profit_pct']:
+            trade_trail['peak_profit_pct'] = profit_pct
+        
+        # Trailing stop logic
+        new_sl = trade_trail['trailing_sl']
+        
+        if profit_pct >= 30:  # At +30% profit
+            new_sl = entry_price * 1.15  # Trail to +15%
+            reason = "Profit 30%+ → Trail SL to +15%"
+        elif profit_pct >= 20:  # At +20% profit
+            new_sl = entry_price * 1.10  # Trail to +10%
+            reason = "Profit 20%+ → Trail SL to +10%"
+        elif profit_pct >= 10:  # At +10% profit
+            new_sl = entry_price  # Move to breakeven
+            reason = "Profit 10%+ → SL to breakeven"
+        else:
+            new_sl = trade_trail['initial_sl']
+            reason = "Profit <10% → Keep initial SL"
+        
+        # Only update if new SL is higher (never lower stop loss)
+        if new_sl > trade_trail['trailing_sl']:
+            trade_trail['trailing_sl'] = new_sl
+            logging.info(f"[UP] TRAILING STOP: Trade {trade_id} | {reason} | New SL: Rs.{new_sl:.2f}")
+            return new_sl
+        
+        return trade_trail['trailing_sl']
+        
+    except Exception as e:
+        logging.error(f"Trailing stop error: {e}")
+        return current_sl
+
+def check_time_based_profit_taking(clientcode, trade_id, entry_time, current_profit_pct):
+    """
+    12. Time-Based Profit Taking - Book if stagnant
+    
+    If position open 45+ min and profit unchanged for 20 min, book it
+    Returns: (should_exit: bool, reason: str)
+    """
+    global POSITION_ENTRY_TIME
+    
+    try:
+        now = datetime.now()
+        
+        if clientcode not in POSITION_ENTRY_TIME:
+            POSITION_ENTRY_TIME[clientcode] = {}
+        
+        if trade_id not in POSITION_ENTRY_TIME[clientcode]:
+            POSITION_ENTRY_TIME[clientcode][trade_id] = {
+                'entry_time': entry_time,
+                'last_profit_update': now,
+                'last_profit_pct': current_profit_pct
+            }
+        
+        trade_time = POSITION_ENTRY_TIME[clientcode][trade_id]
+        time_open = (now - trade_time['entry_time']).total_seconds() / 60  # minutes
+        
+        # Check if profit has changed
+        if abs(current_profit_pct - trade_time['last_profit_pct']) > 1:  # Changed by 1%+
+            trade_time['last_profit_update'] = now
+            trade_time['last_profit_pct'] = current_profit_pct
+        
+        time_since_profit_change = (now - trade_time['last_profit_update']).total_seconds() / 60
+        
+        # Time-based exit conditions
+        if time_open >= 45 and current_profit_pct > 0:  # Open 45+ min with profit
+            if time_since_profit_change >= 20:  # Stagnant for 20 min
+                return (True, f"[TIME] TIME EXIT: Stagnant {time_since_profit_change:.0f}min (Theta decay)")
+        
+        # Approaching close with profit
+        if now.hour >= 15 and now.minute >= 0 and current_profit_pct > 5:  # After 3 PM
+            return (True, f"[TIME] CLOSING: Book {current_profit_pct:.1f}% before 3:30 PM")
+        
+        return (False, f"Time OK (open {time_open:.0f}min)")
+        
+    except Exception as e:
+        logging.error(f"Time-based profit taking error: {e}")
+        return (False, f"Time check error: {str(e)}")
+
+# ==================== AI/ML ENHANCEMENTS ====================
+
+def track_trade_pattern_performance(clientcode, pattern_type, is_win, pnl):
+    """
+    Track win rate by setup type
+    Patterns: 'breakout', 'trend_following', 'mean_reversion', 'volatility_expansion'
+    """
+    global TRADE_PATTERN_STATS
+    
+    if clientcode not in TRADE_PATTERN_STATS:
+        TRADE_PATTERN_STATS[clientcode] = {}
+    
+    if pattern_type not in TRADE_PATTERN_STATS[clientcode]:
+        TRADE_PATTERN_STATS[clientcode][pattern_type] = {
+            'wins': 0,
+            'losses': 0,
+            'total_pnl': 0,
+            'win_rate': 0
+        }
+    
+    stats = TRADE_PATTERN_STATS[clientcode][pattern_type]
+    
+    if is_win:
+        stats['wins'] += 1
+    else:
+        stats['losses'] += 1
+    
+    stats['total_pnl'] += pnl
+    total_trades = stats['wins'] + stats['losses']
+    stats['win_rate'] = (stats['wins'] / total_trades * 100) if total_trades > 0 else 0
+    
+    logging.info(f"[STATS] PATTERN [{pattern_type}]: WR {stats['win_rate']:.0f}% ({stats['wins']}W/{stats['losses']}L) | P&L Rs.{stats['total_pnl']:,.0f}")
+
+def get_best_performing_patterns(clientcode, min_trades=5):
+    """Get highest win rate patterns"""
+    global TRADE_PATTERN_STATS
+    
+    if clientcode not in TRADE_PATTERN_STATS:
+        return []
+    
+    patterns = []
+    for pattern, stats in TRADE_PATTERN_STATS[clientcode].items():
+        total = stats['wins'] + stats['losses']
+        if total >= min_trades:
+            patterns.append({
+                'pattern': pattern,
+                'win_rate': stats['win_rate'],
+                'total_trades': total,
+                'pnl': stats['total_pnl']
+            })
+    
+    patterns.sort(key=lambda x: x['win_rate'], reverse=True)
+    return patterns
+
+def detect_market_regime(vix_value, trend_strength):
+    """
+    Detect current market regime
+    Regimes: 'high_vol', 'low_vol', 'trending', 'choppy'
+    Returns: (regime, confidence, strategy_recommendation)
+    """
+    try:
+        if vix_value > 25:
+            return ('high_vol', 0.9, "Wider stops, bigger targets, reduce size")
+        elif vix_value < 12:
+            return ('low_vol', 0.9, "Tighter stops, quicker exits")
+        elif trend_strength > 70:
+            return ('trending', 0.8, "Trade with trend, let winners run")
+        else:
+            return ('choppy', 0.7, "Quick scalps, tight stops, selective")
+            
+    except Exception as e:
+        logging.error(f"Market regime detection error: {e}")
+        return ('unknown', 0, "Use standard strategy")
 
 def check_trend_direction(candles_data):
     """
@@ -2999,7 +3482,11 @@ Return valid JSON only."""
             max_tokens=2000
         )
         
-        parsed_json = response.choices[0].message.content.strip()
+        content = response.choices[0].message.content
+        if not content:
+            raise ValueError("OpenAI returned empty content")
+        
+        parsed_json = content.strip()
         
         # Remove markdown code blocks if present
         if parsed_json.startswith("```"):
@@ -3528,7 +4015,7 @@ def ai_adjust_trade_params(clientcode, trade_data, market_analysis):
 [TARGET] Current Target 2: Rs.{current_target_2}
 
 [TRADE] Market Direction: {new_direction}
-💡 Recommendation: {recommendation}
+[TIP] Recommendation: {recommendation}
 
 Provide new stop loss and target levels. Respond in JSON:
 {{
@@ -3568,7 +4055,7 @@ Rules:
         
         adjustments = json.loads(adjustment_text)
         
-        logging.info(f"🔧 AI Trade Adjustment:")
+        logging.info(f"[CONFIG] AI Trade Adjustment:")
         logging.info(f"   New SL: Rs.{adjustments.get('new_stop_loss')}")
         logging.info(f"   New T1: Rs.{adjustments.get('new_target_1')}")
         logging.info(f"   New T2: Rs.{adjustments.get('new_target_2')}")
@@ -3680,7 +4167,7 @@ def execute_trade_entry(trade_setup, clientcode):
             logging.error(f"{trades_check[1]}")
             return None
         
-        # 3. Max Open Positions (NEW)
+        # 3. Max Open Positions
         positions_check = check_max_open_positions(clientcode, max_positions=2)
         if not positions_check[0]:
             logging.error(f"{positions_check[1]}")
@@ -3692,7 +4179,7 @@ def execute_trade_entry(trade_setup, clientcode):
             logging.warning(f"{time_check[1]}")
             return None
         
-        # 5. Time Decay Filter (No buys after 2 PM) (NEW)
+        # 5. Time Decay Filter (No buys after 2 PM)
         decay_check = check_time_decay_filter()
         if not decay_check[0]:
             logging.warning(f"{decay_check[1]}")
@@ -3705,11 +4192,37 @@ def execute_trade_entry(trade_setup, clientcode):
             logging.warning(f"{correlation_check[1]}")
             return None
         
-        # 7. Flash Crash Protection (NEW)
-        current_nifty_price = trade_setup.get('nifty_price', 26000)  # Pass from trade setup
+        # 7. Flash Crash Protection
+        current_nifty_price = trade_setup.get('nifty_price', 26000)
         flash_check = check_flash_crash_protection(clientcode, current_nifty_price)
         if not flash_check[0]:
             logging.error(f"{flash_check[1]}")
+            return None
+        
+        # NEW 25. Consecutive Loss Limit
+        loss_streak_check = check_consecutive_loss_limit(clientcode, max_consecutive=3)
+        if not loss_streak_check[0]:
+            logging.error(f"{loss_streak_check[1]}")
+            return None
+        
+        # NEW 26. Profit Protect Mode
+        protected_capital, risk_reduction, protect_status = check_profit_protect_mode(clientcode)
+        if protect_status == "STOP_TRADING":
+            logging.error(f"[STOP] PROFIT PROTECT: Gave back 40% of peak profit (Rs.{protected_capital:,.0f}) - STOP TRADING")
+            return None
+        elif protect_status == "REDUCE_RISK":
+            logging.warning(f"[WARNING] PROFIT PROTECT: Reduce risk by {risk_reduction}% (protecting Rs.{protected_capital:,.0f})")
+        
+        # NEW 2. Time-of-Day Adjustment
+        sl_mult, target_mult, time_phase = get_time_of_day_adjustment()
+        logging.info(f"[TIME] TIME PHASE: {time_phase} | SL×{sl_mult:.2f} | Target×{target_mult:.2f}")
+        
+        # NEW 4. Breakout Confirmation
+        breakout_level = trade_setup.get('breakout_level', current_nifty_price)
+        direction = 'bullish' if 'CE' in tradingsymbol else 'bearish'
+        breakout_ok, breakout_msg = check_breakout_confirmation(clientcode, tradingsymbol, current_nifty_price, breakout_level, direction)
+        if not breakout_ok:
+            logging.info(f"[PENDING] {breakout_msg}")
             return None
         
         # 8. Gap Filter Context (NEW - informational)
@@ -3717,7 +4230,7 @@ def execute_trade_entry(trade_setup, clientcode):
         if abs(gap_pct) > 1.0:
             logging.info(f"🔔 {gap_interp}")
         
-        logging.info(f"✅ Risk checks passed: {trades_check[1]} | {positions_check[1]} | Loss: {loss_check[2]:.1f}%")
+        logging.info(f"[OK] Risk checks passed: {trades_check[1]} | {positions_check[1]} | Loss: {loss_check[2]:.1f}%")
         
         # ==================== POSITION SIZING ====================
         
@@ -3734,17 +4247,55 @@ def execute_trade_entry(trade_setup, clientcode):
             logging.warning(f"{liquidity_check[1]}")
             return None
         
-        # 10. Spread Filter (NEW)
+        # 10. Spread Filter
         spread_check = check_spread_filter(symboltoken, clientcode, max_spread_pct=3.0)
         if not spread_check[0]:
             logging.warning(f"{spread_check[1]}")
             return None
         
+        # NEW 3. Volume Confirmation
+        volume_check = check_volume_confirmation(symboltoken, clientcode)
+        logging.info(f"[STATS] {volume_check[1]}")
+        
+        # NEW 5. Multi-Timeframe Confirmation
+        mtf_aligned, mtf_msg, mtf_trends = check_multi_timeframe_confirmation('NIFTY')
+        logging.info(f"[UP] Multi-TF: {mtf_msg}")
+        
+        # NEW 6. IV Percentile Check
+        strike = trade_setup.get('strike')
+        expiry = trade_setup.get('expiry')
+        current_iv = trade_setup.get('iv', None)
+        iv_rank, iv_msg = calculate_iv_percentile(tradingsymbol, strike, expiry, current_iv)
+        logging.info(f"💹 IV: {iv_msg}")
+        
         # Apply Kelly Criterion position sizing
         base_quantity = trade_setup.get('quantity', 75)  # NIFTY lot size = 75
-        adjusted_quantity = calculate_kelly_position_size(clientcode, base_quantity)
+        kelly_adjusted = calculate_kelly_position_size(clientcode, base_quantity)
         
-        logging.info(f"💎 Liquidity OK (OI: {liquidity_check[2]}) | Spread: {spread_check[2]:.1f}%")
+        # NEW 7. Greeks-Based Position Sizing
+        delta = trade_setup.get('delta', None)
+        greeks_adjusted = adjust_position_size_by_greeks(kelly_adjusted, delta)
+        
+        # Apply time-of-day adjustment
+        final_quantity = int(greeks_adjusted)
+        
+        # Apply profit protect mode risk reduction
+        if protect_status == "REDUCE_RISK":
+            final_quantity = int(final_quantity * (1 - risk_reduction/100))
+            logging.info(f"🛡️ PROFIT PROTECT: Reduced size by {risk_reduction}% → {final_quantity}")
+        
+        # Apply time-of-day adjustment to SL and targets
+        original_sl = trade_setup.get('stop_loss')
+        original_t1 = trade_setup.get('target_1')
+        original_t2 = trade_setup.get('target_2')
+        entry_price = trade_setup.get('entry_price')
+        
+        adjusted_sl = entry_price - (entry_price - original_sl) * sl_mult
+        adjusted_t1 = entry_price + (original_t1 - entry_price) * target_mult
+        adjusted_t2 = entry_price + (original_t2 - entry_price) * target_mult
+        
+        logging.info(f"💎 Final Sizing: Base {base_quantity} → Kelly {kelly_adjusted} → Greeks {greeks_adjusted} → Final {final_quantity}")
+        logging.info(f"[TARGET] Adjusted Levels: SL Rs.{adjusted_sl:.2f} | T1 Rs.{adjusted_t1:.2f} | T2 Rs.{adjusted_t2:.2f}")
         
         # ==================== ORDER EXECUTION ====================
         
@@ -3758,7 +4309,7 @@ def execute_trade_entry(trade_setup, clientcode):
             'ordertype': 'MARKET',  # Market order for fast execution
             'producttype': 'CARRYFORWARD',  # NRML - Full control over exits
             'duration': 'DAY',
-            'quantity': str(adjusted_quantity)
+            'quantity': str(final_quantity)
         }
         
         # Track commission (Rs.20 per order)
@@ -3772,7 +4323,7 @@ def execute_trade_entry(trade_setup, clientcode):
             unique_order_id = order_result.get('uniqueorderid')
             
             # CRITICAL: Verify order execution
-            logging.info(f"⏳ Verifying order execution...")
+            logging.info(f"[PENDING] Verifying order execution...")
             verification = verify_order_execution(clientcode, unique_order_id)
             
             if verification['executed']:
@@ -3790,7 +4341,7 @@ def execute_trade_entry(trade_setup, clientcode):
                 if clientcode in DAILY_STATS and today in DAILY_STATS[clientcode]:
                     slippage_cost = abs(slippage_amt) * actual_quantity
                     DAILY_STATS[clientcode][today]['slippage'] += slippage_cost
-                    logging.info(f"📉 Slippage: {slippage_pct:.2f}% (Rs.{slippage_amt:.2f} per qty, Total Rs.{slippage_cost:.0f})")
+                    logging.info(f"[DOWN] Slippage: {slippage_pct:.2f}% (Rs.{slippage_amt:.2f} per qty, Total Rs.{slippage_cost:.0f})")
                 
                 logging.info(f"[CHART] Order executed: {actual_quantity} @ Rs.{actual_entry_price} (planned: Rs.{planned_entry})")
                 
@@ -3809,17 +4360,30 @@ def execute_trade_entry(trade_setup, clientcode):
                     'slippage_cost': abs(slippage_amt) * actual_quantity,
                     'quantity': actual_quantity,  # Actual filled quantity
                     'remaining_quantity': actual_quantity,
-                    'stop_loss': trade_setup['stop_loss'],
-                    'target_1': trade_setup['target_1'],
-                    'target_2': trade_setup['target_2'],
+                    'stop_loss': adjusted_sl,  # Use time-adjusted SL
+                    'target_1': adjusted_t1,  # Use time-adjusted T1
+                    'target_2': adjusted_t2,  # Use time-adjusted T2
+                    'original_sl': original_sl,  # Store original for reference
+                    'original_t1': original_t1,
+                    'original_t2': original_t2,
                     'status': 'open',
                     'entry_time': datetime.now().isoformat(),
+                    'entry_timestamp': datetime.now(),  # For time-based profit taking
                     'target_1_hit': False,
                     'uniqueorderid': unique_order_id,
-                    'pnl': 0
+                    'pnl': 0,
+                    'pattern_type': trade_setup.get('pattern_type', 'unknown'),  # AI pattern tracking
+                    'time_phase': time_phase  # Track which time window entered
                 }
                 
+                # Initialize trailing stop tracking
+                update_trailing_stop(clientcode, order_id, actual_entry_price, actual_entry_price, adjusted_sl)
+                
+                # Track pattern for AI analytics
+                logging.info(f"[STATS] Trade Pattern: {trade_setup.get('pattern_type', 'unknown')}")
+                
                 logging.info(f"[OK] Trade #{trade_setup['trade_number']} entered successfully")
+                logging.info(f"[TARGET] Levels: Entry Rs.{actual_entry_price:.2f} | SL Rs.{adjusted_sl:.2f} | T1 Rs.{adjusted_t1:.2f} | T2 Rs.{adjusted_t2:.2f}")
                 return order_id
             else:
                 # Order NOT executed (rejected/timeout)
@@ -3956,7 +4520,7 @@ def fetch_fundamental_context():
         except:
             context['us_market_sentiment'] = "DATA UNAVAILABLE"
         
-        logging.info(f"📊 Fundamental context fetched: {len(context['events'])} events today")
+        logging.info(f"[STATS] Fundamental context fetched: {len(context['events'])} events today")
         
     except Exception as e:
         logging.error(f"Error fetching fundamental context: {e}")
@@ -3966,7 +4530,7 @@ def fetch_fundamental_context():
 def fetch_premarket_data():
     """Fetch pre-market data at 9:00 AM - includes fundamentals, events, news"""
     logging.info("=" * 50)
-    logging.info("📰 AUTOMATED TRADING: Fetching pre-market data + events at 9:00 AM")
+    logging.info("[NEWS] AUTOMATED TRADING: Fetching pre-market data + events at 9:00 AM")
     
     try:
         # Fetch SGX NIFTY and global markets
@@ -4057,11 +4621,11 @@ def generate_daily_trade_plan():
                         
                         if parsed_data and parsed_data.get('trades'):
                             PARSED_TRADE_SETUPS[clientcode] = parsed_data['trades']
-                            logging.info(f"✅ Trade plan generated and parsed for {clientcode}: {len(parsed_data['trades'])} trades")
+                            logging.info(f"[OK] Trade plan generated and parsed for {clientcode}: {len(parsed_data['trades'])} trades")
                         else:
-                            logging.warning(f"⚠️ Failed to parse trade plan for {clientcode}")
+                            logging.warning(f"[WARNING] Failed to parse trade plan for {clientcode}")
                     else:
-                        logging.error(f"❌ Failed to generate plan for {clientcode}: {response.status_code}")
+                        logging.error(f"[FAIL] Failed to generate plan for {clientcode}: {response.status_code}")
         
         except Exception as e:
             logging.error(f"Error generating trade plan for {clientcode}: {e}", exc_info=True)
@@ -4086,7 +4650,7 @@ def ai_performance_review(review_time="mid-session"):
             # Get current stats
             stats = get_daily_stats_summary(clientcode)
             if not stats or stats['trades'] == 0:
-                logging.info(f"📊 {clientcode}: No trades yet - skipping review")
+                logging.info(f"[STATS] {clientcode}: No trades yet - skipping review")
                 continue
             
             loss_check = check_daily_loss_circuit_breaker(clientcode)
@@ -4095,15 +4659,15 @@ def ai_performance_review(review_time="mid-session"):
             # Build review prompt
             review_prompt = f"""PERFORMANCE REVIEW - {review_time.upper()}
 
-📊 TODAY'S PERFORMANCE:
+[STATS] TODAY'S PERFORMANCE:
 - P&L: Rs.{stats['pnl']:,.0f} ({stats['pnl_pct']:+.1f}%)
 - Win Rate: {stats['win_rate']:.0f}% ({stats['wins']}W / {stats['losses']}L)
 - Trades: {stats['trades']}/15 executed
 - Net P&L: Rs.{stats['net_pnl']:,.0f} (after costs)
 - Kelly Multiplier: {KELLY_MULTIPLIER.get(clientcode, 1.0):.1f}x
 
-🎯 RISK STATUS:
-- Circuit Breaker: {'🚨 ACTIVE' if not loss_check[0] else f'✅ OK ({loss_check[2]:.1f}% from -10% limit)'}
+[TARGET] RISK STATUS:
+- Circuit Breaker: {'[ALERT] ACTIVE' if not loss_check[0] else f'[OK] OK ({loss_check[2]:.1f}% from -10% limit)'}
 - Trades Remaining: {15 - trades_check[2]} trades available
 
 INSTRUCTIONS:
@@ -4158,11 +4722,11 @@ Respond in JSON format:
                         # Reduce Kelly multiplier
                         if clientcode in KELLY_MULTIPLIER:
                             KELLY_MULTIPLIER[clientcode] *= 0.7
-                            logging.info(f"📉 Reducing position size to {KELLY_MULTIPLIER[clientcode]:.1f}x")
+                            logging.info(f"[DOWN] Reducing position size to {KELLY_MULTIPLIER[clientcode]:.1f}x")
                     
                     # Log suggestions
                     for suggestion in review_data.get('suggestions', []):
-                        logging.info(f"💡 {suggestion}")
+                        logging.info(f"[TIP] {suggestion}")
                 
                 except json.JSONDecodeError:
                     logging.warning(f"Could not parse AI review JSON, got: {review_text[:200]}")
@@ -4321,7 +4885,7 @@ def ai_monitor_and_adjust_trades():
             # For LIMIT orders, you would call modify_order_angel_one() here
 
 def monitor_active_trades_sl_target():
-    """Monitor active trades for stop loss and target hits - OPTIMIZED with batch API"""
+    """Monitor active trades with ALL new enhancements - trailing stops, time-based exits, etc."""
     global ACTIVE_TRADES
     
     for clientcode, trades in ACTIVE_TRADES.items():
@@ -4364,48 +4928,34 @@ def monitor_active_trades_sl_target():
                 
                 logging.info(f"Monitoring Trade {trade_id}: Current=Rs.{current_price}, Entry=Rs.{entry_price}, Profit={profit_pct:.2f}%, SL=Rs.{trade_data.get('stop_loss')}, T1=Rs.{trade_data.get('target_1')}")
                 
-                # Smart trailing stop loss (time + VIX aware)
-                current_time = datetime.now().time()
-                morning_volatility = current_time < datetime.strptime("10:30", "%H:%M").time()
+                # NEW 1. Dynamic Trailing Stop Loss
+                new_trailing_sl = update_trailing_stop(clientcode, trade_id, current_price, entry_price, trade_data.get('stop_loss'))
+                if new_trailing_sl > trade_data.get('stop_loss'):
+                    trade_data['stop_loss'] = new_trailing_sl
                 
-                # Get VIX-based thresholds (cached, refreshes every 5 min)
+                # NEW 12. Time-Based Profit Taking
+                entry_time = trade_data.get('entry_timestamp', datetime.now())
+                should_exit_time, exit_reason = check_time_based_profit_taking(clientcode, trade_id, entry_time, profit_pct)
+                if should_exit_time:
+                    logging.info(f"{exit_reason}")
+                    close_position(clientcode, trade_id, current_price, 'time_based_exit')
+                    continue
+                
+                # Get VIX-based thresholds
                 vix_value = get_current_vix_value()
                 thresholds = calculate_vix_based_thresholds(vix_value)
                 profit_target = calculate_vix_based_profit_target(vix_value)
                 
                 if vix_value:
-                    logging.info(f"[VIX] Current VIX: {vix_value:.2f} - Profit Target: {profit_target:.1f}%, Breakeven: {thresholds['breakeven_threshold']}%, Trail: {thresholds['trail_threshold']}%")
+                    logging.info(f"[VIX] Current: {vix_value:.2f} | Target: {profit_target:.1f}% | Trailing SL: Rs.{trade_data.get('stop_loss'):.2f}")
                 
-                # EARLY SESSION (9:15-10:30): Only trail after profit target (time-based safety)
-                if morning_volatility:
-                    if profit_pct >= profit_target and trade_data.get('stop_loss', 0) < entry_price:
-                        old_sl = trade_data['stop_loss']
-                        trade_data['stop_loss'] = entry_price
-                        logging.info(f"[TRAIL SL] Morning session: Moved SL to breakeven at {profit_target:.1f}% profit: Rs.{old_sl:.2f} → Rs.{entry_price:.2f}")
-                
-                # LATER SESSION (10:30-15:15): VIX-based dynamic trailing
-                else:
-                    # Move to breakeven based on VIX threshold
-                    if profit_pct >= thresholds['breakeven_threshold'] and trade_data.get('stop_loss', 0) < entry_price:
-                        old_sl = trade_data['stop_loss']
-                        trade_data['stop_loss'] = entry_price
-                        logging.info(f"[TRAIL SL] VIX-based breakeven: Rs.{old_sl:.2f} → Rs.{entry_price:.2f} ({profit_pct:.1f}% profit, VIX={vix_value:.1f if vix_value else 'N/A'})")
-                    
-                    # Trail at 5% below current based on VIX threshold
-                    elif profit_pct >= thresholds['trail_threshold']:
-                        new_sl = current_price * 0.95  # 5% below current
-                        if new_sl > trade_data.get('stop_loss', 0):
-                            old_sl = trade_data['stop_loss']
-                            trade_data['stop_loss'] = new_sl
-                            logging.info(f"[TRAIL SL] VIX-based trailing: Rs.{old_sl:.2f} → Rs.{new_sl:.2f} ({profit_pct:.1f}% profit, VIX={vix_value:.1f if vix_value else 'N/A'})")
-                
-                # Check VIX-based profit target (quick exit - highest priority)
+                # Check VIX-based profit target (quick exit)
                 if profit_pct >= profit_target:
                     pnl = (current_price - entry_price) * trade_data.get('quantity', 0)
-                    logging.info(f"[{profit_target:.1f}% PROFIT] VIX-based quick exit (VIX={vix_value:.1f if vix_value else 'N/A'}): {trade_id} Entry: Rs.{entry_price:.2f} Exit: Rs.{current_price:.2f} P&L: Rs.{pnl:.2f}")
+                    logging.info(f"[PROFIT] VIX-based exit ({profit_target:.1f}%): {trade_id} | Entry Rs.{entry_price:.2f} → Exit Rs.{current_price:.2f} | P&L Rs.{pnl:.2f}")
                     close_position(clientcode, trade_id, current_price, f'{profit_target:.0f}pct_profit')
                     
-                    # Reset the trade setup for re-entry
+                    # Reset for re-entry
                     trade_number = trade_data.get('trade_number')
                     if trade_number and clientcode in PARSED_TRADE_SETUPS:
                         for setup in PARSED_TRADE_SETUPS[clientcode]:
@@ -4414,34 +4964,52 @@ def monitor_active_trades_sl_target():
                                 logging.info(f"[RESET] Setup {trade_number} reset for re-entry")
                                 break
                 
-                # Check stop loss
+                # Check stop loss (including trailing)
                 elif current_price <= trade_data.get('stop_loss', 0):
                     logging.warning(f"[SL] STOP LOSS HIT for Trade {trade_id}")
                     close_position(clientcode, trade_id, current_price, 'stop_loss')
                 
-                # Check target 1 (book 50%)
+                # NEW 11. Partial Position Scaling (3-tier)
+                # Target 1: Book 33%
                 elif not trade_data.get('target_1_hit') and current_price >= trade_data.get('target_1', 999999):
-                    logging.info(f"[TARGET] TARGET 1 HIT for Trade {trade_id} - Booking 50% profit")
-                    partial_close_position(clientcode, trade_id, current_price, 'target_1')
+                    logging.info(f"[T1] TARGET 1 HIT - Booking 33% profit")
+                    partial_close_position_scaled(clientcode, trade_id, current_price, 'target_1', scale_pct=33)
                 
-                # Check target 2 (book remaining 50%)
-                elif trade_data.get('target_1_hit') and current_price >= trade_data.get('target_2', 999999):
-                    logging.info(f"[TARGET] TARGET 2 HIT for Trade {trade_id} - Closing remaining position")
-                    close_position(clientcode, trade_id, current_price, 'target_2')
+                # Target 2: Book another 33% (total 66%)
+                elif trade_data.get('target_1_hit') and not trade_data.get('target_2_hit') and current_price >= trade_data.get('target_2', 999999):
+                    logging.info(f"[T2] TARGET 2 HIT - Booking another 33%")
+                    partial_close_position_scaled(clientcode, trade_id, current_price, 'target_2', scale_pct=33)
+                
+                # Target 3 or trailing stop: Close remaining 34%
+                elif trade_data.get('target_2_hit') and current_price >= (trade_data.get('target_2') * 1.15):  # 15% above T2
+                    logging.info(f"[T3] TARGET 3 HIT - Closing remaining position")
+                    close_position(clientcode, trade_id, current_price, 'target_3')
                 
         except Exception as e:
             logging.error(f"Error monitoring trades for {clientcode}: {e}", exc_info=True)
 
-def partial_close_position(clientcode, trade_id, exit_price, reason):
-    """Close 50% of position at Target 1"""
+def partial_close_position_scaled(clientcode, trade_id, exit_price, reason, scale_pct=33):
+    """
+    NEW 11. Partial Position Scaling (3-tier)
+    Close specified percentage of remaining position
+    
+    3-Tier Scaling:
+    - Target 1: Close 33% (scale_pct=33)
+    - Target 2: Close 33% of remaining = 33% of original (scale_pct=33)
+    - Target 3/SL: Close remaining 34%
+    """
     try:
         trade_data = ACTIVE_TRADES[clientcode][trade_id]
         
         remaining_qty = trade_data.get('remaining_quantity')
-        close_qty = remaining_qty // 2
+        original_qty = trade_data.get('quantity', remaining_qty)
         
+        # Calculate close quantity based on percentage
+        close_qty = int(remaining_qty * (scale_pct / 100))
+        
+        # Ensure at least 1 lot closes
         if close_qty == 0:
-            logging.warning(f"Quantity too small to partially close")
+            logging.warning(f"Quantity too small to partially close ({remaining_qty} remaining, {scale_pct}%)")
             return
         
         # Prepare exit order
@@ -4460,18 +5028,37 @@ def partial_close_position(clientcode, trade_id, exit_price, reason):
         order_result = place_order_angel_one(clientcode, order_params)
         
         if order_result and order_result.get('status'):
-            trade_data['target_1_hit'] = True
-            trade_data['remaining_quantity'] = remaining_qty - close_qty
-            trade_data['partial_exit_price'] = exit_price
-            trade_data['partial_exit_time'] = datetime.now().isoformat()
+            # Update trade data
+            new_remaining = remaining_qty - close_qty
+            trade_data['remaining_quantity'] = new_remaining
             
-            logging.info(f"[OK] Partial exit successful: {close_qty} qty at Rs.{exit_price}")
+            # Mark targets hit
+            if reason == 'target_1':
+                trade_data['target_1_hit'] = True
+                trade_data['partial_exit_1_price'] = exit_price
+                trade_data['partial_exit_1_time'] = datetime.now().isoformat()
+                trade_data['partial_exit_1_qty'] = close_qty
+            elif reason == 'target_2':
+                trade_data['target_2_hit'] = True
+                trade_data['partial_exit_2_price'] = exit_price
+                trade_data['partial_exit_2_time'] = datetime.now().isoformat()
+                trade_data['partial_exit_2_qty'] = close_qty
+            
+            closed_pct = (close_qty / original_qty) * 100
+            remaining_pct = (new_remaining / original_qty) * 100
+            
+            logging.info(f"[3-TIER SCALE] {reason.upper()}: Closed {close_qty}/{original_qty} lots ({closed_pct:.0f}%) at Rs.{exit_price} | Remaining: {new_remaining} ({remaining_pct:.0f}%)")
         
     except Exception as e:
         logging.error(f"Error in partial close: {e}")
 
+# LEGACY function for backward compatibility
+def partial_close_position(clientcode, trade_id, exit_price, reason):
+    """Legacy: Close 50% of position at Target 1 - Use partial_close_position_scaled instead"""
+    partial_close_position_scaled(clientcode, trade_id, exit_price, reason, scale_pct=50)
+
 def close_position(clientcode, trade_id, exit_price, reason):
-    """Close entire position with P&L tracking and statistics update"""
+    """Close entire position with P&L tracking, pattern analytics, and loss streak updates"""
     try:
         trade_data = ACTIVE_TRADES[clientcode][trade_id]
         
@@ -4535,21 +5122,40 @@ def close_position(clientcode, trade_id, exit_price, reason):
             # Determine win/loss
             is_win = net_pnl > 0
             
+            # NEW: Update loss streak for consecutive loss protection
+            update_loss_streak(clientcode, is_win)
+            
+            # NEW: Track AI pattern performance
+            pattern_type = trade_data.get('pattern_type', 'unknown')
+            track_trade_pattern_performance(clientcode, pattern_type, is_win, net_pnl)
+            
             # Update daily statistics
             update_daily_pnl(clientcode, net_pnl, is_win=is_win)
             
             # Log comprehensive exit summary
             pnl_pct = (net_pnl / (entry_price * total_qty)) * 100
-            logging.info(f"[{'✅ WIN' if is_win else '❌ LOSS'}] Position closed: {reason}")
+            logging.info(f"[{'[OK] WIN' if is_win else '[FAIL] LOSS'}] Position closed: {reason} | Pattern: {pattern_type}")
             logging.info(f"  Entry: Rs.{entry_price:.2f} × {total_qty} = Rs.{entry_price * total_qty:,.0f}")
             logging.info(f"  Exit: Rs.{exit_price:.2f} × {total_qty} = Rs.{exit_price * total_qty:,.0f}")
             logging.info(f"  P&L: Rs.{net_pnl:,.0f} ({pnl_pct:+.1f}%)")
             logging.info(f"  Exit Slippage: {exit_slippage_pct:.2f}% (Rs.{exit_slippage_cost:.0f})")
             
+            # NEW: Show loss streak status if applicable
+            if clientcode in CONSECUTIVE_LOSSES:
+                streak = CONSECUTIVE_LOSSES[clientcode]
+                if streak > 0:
+                    logging.warning(f"  [WARNING] Consecutive losses: {streak}/3")
+            
+            # NEW: Show best performing patterns
+            best_patterns = get_best_performing_patterns(clientcode, min_trades=3)
+            if best_patterns:
+                top_pattern = best_patterns[0]
+                logging.info(f"  [UP] Best pattern: {top_pattern['pattern']} ({top_pattern['win_rate']:.0f}% WR, {top_pattern['trades']} trades)")
+            
             # Print daily summary
             stats_summary = get_daily_stats_summary(clientcode)
             if stats_summary:
-                logging.info(f"📊 Today: Rs.{stats_summary['net_pnl']:,.0f} | {stats_summary['win_rate']:.0f}% WR | {stats_summary['trades']} trades")
+                logging.info(f"[STATS] Today: Rs.{stats_summary['net_pnl']:,.0f} | {stats_summary['win_rate']:.0f}% WR | {stats_summary['trades']} trades")
         
     except Exception as e:
         logging.error(f"Error closing position: {e}")
@@ -4635,7 +5241,7 @@ def toggle_auto_trading():
     # Initialize daily stats if enabling trading
     if enabled:
         initialize_daily_stats(clientcode, starting_capital)
-        logging.info(f"🚀 Auto-trading ENABLED for {clientcode} with capital Rs.{starting_capital:,.0f}")
+        logging.info(f"[START] Auto-trading ENABLED for {clientcode} with capital Rs.{starting_capital:,.0f}")
     else:
         logging.info(f"⏸️ Auto-trading DISABLED for {clientcode}")
     
