@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload Market Analysis - TradingBot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .info-box {
+            background: #f0f7ff;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 5px;
+        }
+        
+        .info-box h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .info-box ul {
+            margin-left: 20px;
+            line-height: 1.8;
+        }
+        
+        .upload-section {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            left: -9999px;
+        }
+        
+        .file-input-label {
+            display: block;
+            padding: 15px 30px;
+            background: #667eea;
+            color: white;
+            text-align: center;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            transition: all 0.3s;
+        }
+        
+        .file-input-label:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .file-selected {
+            background: #e8f5e9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .file-selected.show {
+            display: block;
+        }
+        
+        .file-selected p {
+            margin: 5px 0;
+            color: #2e7d32;
+        }
+        
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            margin-left: 10px;
+        }
+        
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .current-analysis {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 5px;
+            display: none;
+        }
+        
+        .current-analysis.show {
+            display: block;
+        }
+        
+        .current-analysis h3 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+        
+        .analysis-content {
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            margin: 10px 0;
+        }
+        
+        .message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .message.show {
+            display: block;
+        }
+        
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+        
+        .back-link:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Upload Your Market Analysis</h1>
+            <p>Let AI combine your insights with market data for better trading decisions</p>
+        </div>
+        
+        <div class="content">
+            <div class="info-box">
+                <h3>How It Works</h3>
+                <ul>
+                    <li><strong>Upload your analysis</strong> - Support for .docx and .txt files</li>
+                    <li><strong>AI combines it with live data</strong> - Your analysis + technical indicators + market context</li>
+                    <li><strong>Better trade decisions</strong> - AI generates plans that respect your market view</li>
+                    <li><strong>Always active</strong> - Once uploaded, used for all AI trade plan generations</li>
+                </ul>
+            </div>
+            
+            <div id="messageBox" class="message"></div>
+            
+            <!-- Current Analysis Display -->
+            <div id="currentAnalysis" class="current-analysis">
+                <h3>Current Analysis Document</h3>
+                <p><strong>Filename:</strong> <span id="currentFilename"></span></p>
+                <p><strong>Uploaded:</strong> <span id="currentUploadTime"></span></p>
+                <p><strong>Content Length:</strong> <span id="currentContentLength"></span> characters</p>
+                <div class="analysis-content" id="currentContent"></div>
+                <button class="btn btn-danger" onclick="deleteAnalysis()">Delete Current Analysis</button>
+            </div>
+            
+            <!-- Upload Form -->
+            <div class="upload-section">
+                <h3 style="margin-bottom: 20px;">Upload New Analysis</h3>
+                
+                <div class="file-input-wrapper">
+                    <input type="file" id="analysisFile" accept=".docx,.txt" onchange="handleFileSelect(event)">
+                    <label for="analysisFile" class="file-input-label">
+                        Choose File (.docx or .txt)
+                    </label>
+                </div>
+                
+                <div id="fileSelected" class="file-selected">
+                    <p><strong>Selected File:</strong> <span id="selectedFilename"></span></p>
+                    <p><strong>File Size:</strong> <span id="selectedFileSize"></span></p>
+                </div>
+                
+                <button id="uploadBtn" class="btn btn-primary" onclick="uploadAnalysis()" disabled>
+                    Upload Analysis
+                </button>
+            </div>
+            
+            <div class="info-box">
+                <h3>What to Include in Your Analysis</h3>
+                <ul>
+                    <li><strong>Market Outlook</strong> - Your view on NIFTY direction (bullish/bearish/neutral)</li>
+                    <li><strong>Key Levels</strong> - Support and resistance levels you're watching</li>
+                    <li><strong>Events Impact</strong> - How you think upcoming events will affect the market</li>
+                    <li><strong>Trade Preferences</strong> - CE vs PE bias, strike selection preferences</li>
+                    <li><strong>Risk Factors</strong> - What you're cautious about today</li>
+                </ul>
+            </div>
+            
+            <a href="/dashboard" class="back-link">← Back to Dashboard</a>
+        </div>
+    </div>
+    
+    <script>
+        let selectedFile = null;
+        
+        // Load current analysis on page load
+        window.onload = function() {
+            loadCurrentAnalysis();
+        };
+        
+        function loadCurrentAnalysis() {
+            fetch('/api/analysis/get')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status && data.has_analysis) {
+                        document.getElementById('currentFilename').textContent = data.filename;
+                        document.getElementById('currentUploadTime').textContent = new Date(data.uploaded_at).toLocaleString();
+                        document.getElementById('currentContentLength').textContent = data.content_length;
+                        document.getElementById('currentContent').textContent = data.content;
+                        document.getElementById('currentAnalysis').classList.add('show');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading current analysis:', error);
+                });
+        }
+        
+        function handleFileSelect(event) {
+            selectedFile = event.target.files[0];
+            
+            if (selectedFile) {
+                document.getElementById('selectedFilename').textContent = selectedFile.name;
+                document.getElementById('selectedFileSize').textContent = formatBytes(selectedFile.size);
+                document.getElementById('fileSelected').classList.add('show');
+                document.getElementById('uploadBtn').disabled = false;
+            }
+        }
+        
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+        
+        function showMessage(text, type) {
+            const messageBox = document.getElementById('messageBox');
+            messageBox.textContent = text;
+            messageBox.className = 'message show ' + type;
+            
+            setTimeout(() => {
+                messageBox.classList.remove('show');
+            }, 5000);
+        }
+        
+        function uploadAnalysis() {
+            if (!selectedFile) {
+                showMessage('Please select a file first', 'error');
+                return;
+            }
+            
+            const uploadBtn = document.getElementById('uploadBtn');
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Uploading...';
+            
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            
+            fetch('/api/analysis/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Upload Analysis';
+                
+                if (data.status) {
+                    showMessage('Analysis uploaded successfully! AI will now use it for trade planning.', 'success');
+                    
+                    // Reset file input
+                    document.getElementById('analysisFile').value = '';
+                    document.getElementById('fileSelected').classList.remove('show');
+                    selectedFile = null;
+                    
+                    // Reload current analysis
+                    setTimeout(() => {
+                        loadCurrentAnalysis();
+                    }, 1000);
+                } else {
+                    showMessage('Error: ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Upload Analysis';
+                showMessage('Upload failed: ' + error.message, 'error');
+            });
+        }
+        
+        function deleteAnalysis() {
+            if (!confirm('Are you sure you want to delete your analysis document?')) {
+                return;
+            }
+            
+            fetch('/api/analysis/delete', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status) {
+                    showMessage('Analysis document deleted successfully', 'success');
+                    document.getElementById('currentAnalysis').classList.remove('show');
+                } else {
+                    showMessage('Error: ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                showMessage('Delete failed: ' + error.message, 'error');
+            });
+        }
+    </script>
+</body>
+</html>
