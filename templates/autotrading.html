@@ -265,7 +265,22 @@
             </div>
 
             <div class="warning-box">
-                ⚠️ <strong>Important:</strong> When enabled, the system will automatically generate trade plans at 9:15 AM, monitor prices, execute trades, and close positions at 3:15 PM. Make sure you have sufficient funds and understand the risks involved.
+                [WARNING] <strong>Important:</strong> When enabled, the system will automatically generate trade plans at 9:15 AM, monitor prices, execute trades, and close positions at 3:15 PM. Make sure you have sufficient funds and understand the risks involved.
+            </div>
+
+            <div class="info-box" style="background: #fff7ed; border-left-color: #f97316;">
+                [STAR] <strong>Opening Volatility Scalp (Ultra-Fast):</strong> Specialized 9:15 AM opening strategy! Analyzes gap at 9:10 AM, executes all-in ATM trade at 9:15 AM sharp. Target: 5% profit, SL: 40%, Time: 5 minutes max. System monitors EVERY 1 SECOND from 9:15-9:20 AM for instant exits (reverts to 60-sec intervals after). Indian market optimized. Enable auto-trading to activate.
+            </div>
+
+            <div class="info-box" style="background: #dcfce7; border-left-color: #22c55e;">
+                [INFO] <strong>Started Late?</strong> If you missed the 9:15 AM generation, click the "Generate & Start Now" button below to create a trade plan instantly (works during market hours 9:15 AM - 3:30 PM).
+            </div>
+
+            <div style="text-align: center; margin: 20px 0;">
+                <button class="refresh-btn" onclick="generateNow()" style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); box-shadow: 0 5px 15px rgba(34, 197, 94, 0.4);">
+                    [LIGHTNING] Generate & Start Now
+                </button>
+                <div id="generateStatus" style="margin-top: 10px; font-size: 14px; color: #666;"></div>
             </div>
 
             <div class="schedule-card">
@@ -315,16 +330,36 @@
 
         <div class="plan-card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="color: #333;">📊 Today's Trade Plan</h2>
-                <button class="refresh-btn" onclick="refreshStatus()">🔄 Refresh</button>
+                <h2 style="color: #333;">[CHART] Today's Trade Plan</h2>
+                <div>
+                    <button class="refresh-btn" onclick="showPlanHistory()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin-right: 10px;">
+                        [HISTORY] Plan History
+                    </button>
+                    <button class="refresh-btn" onclick="refreshStatus()">[REFRESH] Refresh</button>
+                </div>
             </div>
 
             <div class="info-box">
-                ℹ️ Trade plans are generated daily at 9:15 AM based on comprehensive market analysis including technical indicators, option Greeks, VIX, global markets, and your uploaded research documents.
+                [INFO] Trade plans are generated daily at 9:15 AM based on comprehensive market analysis including technical indicators, option Greeks, VIX, global markets, and your uploaded research documents.
             </div>
 
             <div id="planContent" class="no-plan">
                 Loading trade plan...
+            </div>
+        </div>
+        
+        <div class="plan-card" id="planHistorySection" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="color: #333;">[HISTORY] Saved Trade Plans</h2>
+                <button class="refresh-btn" onclick="hidePlanHistory()">[X] Close</button>
+            </div>
+            
+            <div class="info-box" style="background: #fef3c7; border-left-color: #f59e0b;">
+                [STAR] Select a previously generated plan to activate it without generating a new one (saves OpenAI API costs)
+            </div>
+            
+            <div id="planHistoryContent" class="trades-grid">
+                <div class="no-plan">Loading history...</div>
             </div>
         </div>
 
@@ -375,6 +410,10 @@
                             activeTrades.innerHTML += `
                                 <div class="trade-card">
                                     <h4>Trade #${tradeId}</h4>
+                                    <div class="trade-detail">
+                                        <label>Symbol:</label>
+                                        <span>${trade.tradingsymbol || 'N/A'}</span>
+                                    </div>
                                     <div class="trade-detail">
                                         <label>Entry:</label>
                                         <span>₹${trade.entry_price || 'N/A'}</span>
@@ -432,6 +471,155 @@
                 console.error('Error toggling auto-trading:', error);
                 alert('Network error: ' + error.message);
                 document.getElementById('autoTradingToggle').checked = currentStatus;
+            }
+        }
+
+        async function generateNow() {
+            const statusDiv = document.getElementById('generateStatus');
+            const button = event.target;
+            
+            // Disable button during generation
+            button.disabled = true;
+            button.style.opacity = '0.6';
+            button.style.cursor = 'not-allowed';
+            
+            statusDiv.innerHTML = '<span style="color: #f59e0b;">[HOURGLASS] Generating trade plan... This may take 30-60 seconds...</span>';
+            
+            try {
+                const response = await fetch('/api/autotrading/generate-now', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        starting_capital: 15000,
+                        auto_enable: true
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.status) {
+                    statusDiv.innerHTML = `<span style="color: #22c55e; font-weight: 600;">[CHECK] Successfully generated ${data.num_trades} trade(s) at ${data.current_time}!</span>`;
+                    
+                    // Show trade summary
+                    if (data.trades && data.trades.length > 0) {
+                        let tradeList = '<div style="margin-top: 10px; text-align: left; background: #f8f9fa; padding: 15px; border-radius: 8px;">';
+                        tradeList += '<strong>Trade Setups:</strong><br>';
+                        data.trades.forEach((trade, idx) => {
+                            tradeList += `<div style="margin: 5px 0; padding: 5px; background: white; border-radius: 4px;">
+                                ${idx + 1}. ${trade.symbol} ${trade.trade_type} @ Entry: Rs.${trade.entry_price} 
+                                (Target: Rs.${trade.target_price}, SL: Rs.${trade.stop_loss})<br>
+                                <small style="color: #666;">Expiry: ${trade.expiry || 'Not specified'} | Qty: ${trade.quantity || 25}</small>
+                            </div>`;
+                        });
+                        tradeList += '</div>';
+                        statusDiv.innerHTML += tradeList;
+                    }
+                    
+                    // Auto-refresh to show new plan and trades
+                    setTimeout(() => {
+                        refreshStatus();
+                    }, 1000);
+                } else {
+                    statusDiv.innerHTML = `<span style="color: #ef4444; font-weight: 600;">[X] Error: ${data.message}</span>`;
+                }
+            } catch (error) {
+                console.error('Error generating plan:', error);
+                statusDiv.innerHTML = `<span style="color: #ef4444; font-weight: 600;">[X] Network error: ${error.message}</span>`;
+            } finally {
+                // Re-enable button
+                button.disabled = false;
+                button.style.opacity = '1';
+                button.style.cursor = 'pointer';
+            }
+        }
+        
+        async function showPlanHistory() {
+            document.getElementById('planHistorySection').style.display = 'block';
+            
+            try {
+                const response = await fetch('/api/autotrading/plan-history');
+                const data = await response.json();
+                
+                const historyDiv = document.getElementById('planHistoryContent');
+                
+                if (data.status && data.plans && data.plans.length > 0) {
+                    historyDiv.innerHTML = '';
+                    data.plans.reverse().forEach(plan => {
+                        const planCard = document.createElement('div');
+                        planCard.className = 'trade-card';
+                        planCard.style.borderLeftColor = plan.selected ? '#22c55e' : '#667eea';
+                        
+                        const date = new Date(plan.generated_at);
+                        const dateStr = date.toLocaleString('en-IN');
+                        
+                        planCard.innerHTML = `
+                            <h4>${plan.selected ? '[CHECK]' : ''} Plan ${plan.id}</h4>
+                            <div class="trade-detail">
+                                <label>Generated:</label>
+                                <span>${dateStr}</span>
+                            </div>
+                            <div class="trade-detail">
+                                <label>Trades:</label>
+                                <span>${plan.num_trades}</span>
+                            </div>
+                            <div class="trade-detail">
+                                <label>Capital:</label>
+                                <span>Rs.${plan.capital.toLocaleString()}</span>
+                            </div>
+                            <div class="trade-detail">
+                                <label>Method:</label>
+                                <span>${plan.method}</span>
+                            </div>
+                            <button 
+                                onclick="selectPlan('${plan.id}')" 
+                                style="margin-top: 10px; width: 100%; padding: 8px; background: ${plan.selected ? '#10b981' : '#667eea'}; color: white; border: none; border-radius: 5px; cursor: pointer;"
+                            >
+                                ${plan.selected ? '[CHECK] Currently Active' : '[PLAY] Activate This Plan'}
+                            </button>
+                        `;
+                        
+                        historyDiv.appendChild(planCard);
+                    });
+                } else {
+                    historyDiv.innerHTML = '<div class="no-plan">No saved plans yet. Generate your first plan!</div>';
+                }
+            } catch (error) {
+                console.error('Error loading history:', error);
+                document.getElementById('planHistoryContent').innerHTML = 
+                    '<div class="no-plan">[X] Error loading history</div>';
+            }
+        }
+        
+        function hidePlanHistory() {
+            document.getElementById('planHistorySection').style.display = 'none';
+        }
+        
+        async function selectPlan(planId) {
+            if (!confirm('Activate this trade plan? This will replace the current plan.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/autotrading/select-plan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({plan_id: planId})
+                });
+                
+                const data = await response.json();
+                
+                if (data.status) {
+                    alert(`[CHECK] Trade plan activated! ${data.num_trades} trades loaded.`);
+                    hidePlanHistory();
+                    refreshStatus();
+                } else {
+                    alert(`[X] Error: ${data.message}`);
+                }
+            } catch (error) {
+                console.error('Error selecting plan:', error);
+                alert(`[X] Network error: ${error.message}`);
             }
         }
 
