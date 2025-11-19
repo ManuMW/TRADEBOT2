@@ -2459,8 +2459,8 @@ For each trade, specify:
 2. Option type (CE for bullish, PE for bearish)
 3. Entry price: Option premium price (realistic based on NIFTY level)
 4. Entry conditions: NIFTY spot price level that triggers entry
-5. Stop loss: Option premium level (not NIFTY index)
-6. Target 1 & Target 2: Option premium levels
+5. Stop loss: Option premium level (20-30% below entry)
+6. **Target: 10% profit** (single target - book and exit)
 7. **QUANTITY CALCULATION**: Calculate lots to maximize capital usage
    - Formula: Lots = floor(Max Per Trade / (Entry Premium × Lot Size))
    - Quantity = Lots × {nifty_lot_size}
@@ -2498,14 +2498,10 @@ Rationale: Indian market intraday moves average 100-200 points. Suggesting 200+ 
 
 - Entry condition format: "When NIFTY crosses above {current_price+50:.0f}" (for CE) or "When NIFTY crosses below {current_price-50:.0f}" (for PE)
 - **IMPORTANT**: Calculate quantity to use maximum capital available per trade
-- **VIX-BASED PROFIT TARGETS**: System will automatically exit trades based on current VIX:
-  * VIX < 10: Book at 3% (very calm market)
-  * VIX 10-12: Book at 4% (calm market)
-  * VIX 12-15: Book at 5% (normal market)
-  * VIX 15-18: Book at 6% (active market)
-  * VIX 18-22: Book at 65% (high volatility - big moves)
-  * VIX 22-25: Book at 80% (extreme volatility - ride it!)
-  * VIX > 25: Book at 80%+ but BE CAUTIOUS (hedge recommended)
+- **PROFIT TARGET**: System will automatically exit ALL trades at 10% profit
+  * Simple, consistent target across all market conditions
+  * Opening scalp trades (9:15 AM) use separate 5% target
+  * Regular trades: Always book at 10% profit
 - **RE-ENTRY RULE**: After profit booking, re-entry only if price breaks prior high/low by 0.5%
 - **IV FILTER**: Prefer rising IV (premium expansion) for long positions
 - **VIX MOMENTUM**: Rising VIX = bigger moves expected, Falling VIX = book early
@@ -2514,23 +2510,21 @@ Format example (for capital Rs.{capital:,}, max per trade Rs.{max_per_trade:,.0f
 Trade 1: NIFTY 26000 CE (Expiry: {'Next week' if is_expiry_day else 'Current week'})
 Entry Premium: Rs.120
 Entry Condition: When NIFTY crosses above 25900
-Stop Loss: Rs.85 (premium)
-Target 1: Rs.140 (premium)
-Target 2: Rs.165 (premium)
+Stop Loss: Rs.85 (premium, 29% below entry)
+Target: Rs.132 (premium, 10% profit - book and exit)
 Quantity: {int(max_per_trade/3000) * nifty_lot_size} (calculated: floor({max_per_trade:,.0f}/(120×25)) = {int(max_per_trade/3000)} lots = {int(max_per_trade/3000)}×25 = {int(max_per_trade/3000) * nifty_lot_size} qty)
 Entry Time: 09:30 to 11:30
 
 Trade 2: NIFTY 25700 PE (Expiry: {'Next week' if is_expiry_day else 'Current week'})
 Entry Premium: Rs.100
 Entry Condition: When NIFTY crosses below 25750
-Stop Loss: Rs.70 (premium)
-Target 1: Rs.120 (premium)
-Target 2: Rs.145 (premium)
+Stop Loss: Rs.70 (premium, 30% below entry)
+Target: Rs.110 (premium, 10% profit - book and exit)
 Quantity: {int(max_per_trade/2500) * nifty_lot_size} (calculated: floor({max_per_trade:,.0f}/(100×25)) = {int(max_per_trade/2500)} lots = {int(max_per_trade/2500)}×25 = {int(max_per_trade/2500) * nifty_lot_size} qty)
 Entry Time: 09:30 to 12:00
 
 EXECUTION RULES:
-- **Professional VIX-based targets** (see above) - Options can move 50-100% in minutes
+- **10% PROFIT TARGET** - Book immediately, don't get greedy
 - **Trend Filter**: Trade with EMA trend (bullish = CE bias, bearish = PE bias)
 - **VIX Momentum**: Rising VIX = hold longer, Falling VIX = book early
 - **Stop Losses**: VIX < 15 = 10-15% SL, VIX 15-20 = 20% SL, VIX 20-25 = 30% SL, VIX > 25 = 40% SL
@@ -3808,38 +3802,18 @@ def calculate_vix_based_thresholds(vix_value):
 
 def calculate_vix_based_profit_target(vix_value):
     """
-    Calculate dynamic profit target based on VIX (volatility)
-    PROFESSIONAL SCALPING TARGETS - Options can move 50-100% in minutes on high VIX
+    Calculate profit target - FIXED AT 10% for consistent trading
     
-    Logic: High VIX = explosive premium expansion = ride the move
-           Low VIX = limited premium growth = book early
+    Logic: Single profit target of 10% regardless of VIX
+           - Keeps trading simple and predictable
+           - Consistent risk-reward across all trades
+           - Easy to track performance
     
-    VIX Ranges (Professional Options Trading):
-    - < 12: Very Calm → 15% target (quick scalp only)
-    - 12-15: Normal Market → 25% target (CE/PE directional)
-    - 15-18: Volatile → 40% target (trend trades)
-    - 18-25: High Volatility → 65% target (breakout momentum)
-    - > 25: Extreme → 80% target (but risky, use hedges)
+    Opening Scalp Trades (9:15 AM) use separate 5% target
+    Regular trades: Always 10%
     """
-    if vix_value is None:
-        # Default if VIX unavailable
-        return 25.0
-    
-    if vix_value < 12:
-        # Very calm market - quick scalps only
-        return 15.0
-    elif vix_value < 15:
-        # Normal volatility - standard directional trades
-        return 25.0
-    elif vix_value < 18:
-        # Volatile market - ride trends
-        return 40.0
-    elif vix_value < 25:
-        # High volatility - breakouts can go big
-        return 65.0
-    else:
-        # Extreme volatility - huge moves but risky
-        return 80.0
+    # Fixed 10% target for all regular trades
+    return 10.0
 
 # ==================== TRADE PLAN PARSING ====================
 
@@ -4597,7 +4571,24 @@ def verify_order_execution(clientcode, unique_order_id, max_retries=5, wait_seco
     }
 
 def execute_trade_entry(trade_setup, clientcode):
-    """Execute entry order for a trade setup with comprehensive risk checks"""
+    """
+    Execute entry order for a trade setup with comprehensive risk checks.
+    
+    SMART HYBRID ORDER EXECUTION:
+    - Compares current price vs AI target price
+    - If current <= target OR within 3%: MARKET order (instant execution, capture opportunity)
+    - If current 3-8% above target: LIMIT at 99% of current (quick fill with small buffer)
+    - If current >8% above target: LIMIT at AI target (wait for pullback)
+    
+    This approach balances:
+    ✅ Price control (use LIMIT when price is unfavorable)
+    ✅ Opportunity capture (use MARKET when price is good)
+    ✅ No missed trades (execute immediately if conditions are favorable)
+    
+    Returns:
+        order_id if order placed successfully (may be pending for LIMIT orders)
+        None if order rejected or risk checks failed
+    """
     try:
         # ==================== RISK MANAGEMENT CHECKS ====================
         
@@ -4745,18 +4736,84 @@ def execute_trade_entry(trade_setup, clientcode):
         
         # ==================== ORDER EXECUTION ====================
         
-        # Prepare order parameters
+        # Get target entry price from AI trade setup
+        target_entry_price = trade_setup.get('entry_price')
+        
+        if not target_entry_price or target_entry_price <= 0:
+            logging.error(f"[ORDER] Invalid entry price: {target_entry_price}")
+            return None
+        
+        # Get current option price for smart order type decision
+        current_option_price = get_price_from_cache_or_api(symboltoken, clientcode)
+        
+        # SMART ORDER EXECUTION LOGIC:
+        # If price is already at/below target → MARKET order (instant fill, don't miss opportunity)
+        # If price is above target → LIMIT order (wait for better price)
+        
+        order_type = 'LIMIT'  # Default
+        order_price = target_entry_price
+        execution_strategy = 'WAIT'
+        
+        if current_option_price:
+            price_diff = current_option_price - target_entry_price
+            price_diff_pct = (price_diff / target_entry_price) * 100
+            
+            logging.info(f"[PRICE CHECK] Current: Rs.{current_option_price:.2f} | Target: Rs.{target_entry_price:.2f} | Diff: {price_diff_pct:+.1f}%")
+            
+            # Decision logic for BUY orders:
+            if current_option_price <= target_entry_price:
+                # Price is AT or BELOW target - EXCELLENT entry, take it NOW
+                order_type = 'MARKET'
+                execution_strategy = 'IMMEDIATE'
+                logging.info(f"[STRATEGY] Price Rs.{current_option_price:.2f} <= Target Rs.{target_entry_price:.2f}")
+                logging.info(f"[EXECUTE NOW] Using MARKET order to capture favorable price immediately")
+                
+            elif price_diff_pct <= 3:
+                # Price is 0-3% above target - CLOSE ENOUGH, take it before it moves away
+                order_type = 'MARKET'
+                execution_strategy = 'IMMEDIATE'
+                logging.info(f"[STRATEGY] Price {price_diff_pct:.1f}% above target (within 3% tolerance)")
+                logging.info(f"[EXECUTE NOW] Using MARKET order to avoid missing opportunity")
+                
+            elif price_diff_pct <= 8:
+                # Price is 3-8% above target - Use LIMIT but with slight buffer
+                order_type = 'LIMIT'
+                order_price = current_option_price * 0.99  # 1% below current as reasonable fill price
+                execution_strategy = 'LIMIT_WITH_BUFFER'
+                logging.info(f"[STRATEGY] Price {price_diff_pct:.1f}% above target")
+                logging.info(f"[LIMIT ORDER] Placing at Rs.{order_price:.2f} (1% below current for quick fill)")
+                
+            else:
+                # Price is >8% above target - Use strict LIMIT at target price
+                order_type = 'LIMIT'
+                order_price = target_entry_price
+                execution_strategy = 'WAIT'
+                logging.warning(f"[STRATEGY] Price {price_diff_pct:.1f}% above target - FAR from ideal entry")
+                logging.warning(f"[LIMIT ORDER] Placing at Rs.{target_entry_price:.2f}, will wait for price to come down")
+                logging.warning(f"[RISK] Order may not fill if price continues rising")
+        else:
+            # Could not fetch current price - default to LIMIT for safety
+            logging.warning(f"[ALERT] Could not fetch current option price - defaulting to LIMIT order")
+        
+        # Prepare order parameters based on strategy
         order_params = {
             'variety': 'NORMAL',
             'tradingsymbol': tradingsymbol,
             'symboltoken': symboltoken,
             'transactiontype': 'BUY',
             'exchange': 'NFO',
-            'ordertype': 'MARKET',  # Market order for fast execution
+            'ordertype': order_type,
             'producttype': 'CARRYFORWARD',  # NRML - Full control over exits
             'duration': 'DAY',
             'quantity': str(final_quantity)
         }
+        
+        # Add price only for LIMIT orders
+        if order_type == 'LIMIT':
+            order_params['price'] = str(round(order_price, 2))
+            logging.info(f"[ORDER] Placing LIMIT order at Rs.{order_price:.2f}")
+        else:
+            logging.info(f"[ORDER] Placing MARKET order (will execute at best available price)")
         
         # Track commission (Rs.20 per order)
         track_commission(clientcode, num_orders=1, commission_per_order=20)
@@ -4768,8 +4825,20 @@ def execute_trade_entry(trade_setup, clientcode):
             order_id = order_result['orderid']
             unique_order_id = order_result.get('uniqueorderid')
             
+            if order_type == 'MARKET':
+                logging.info(f"[ORDER PLACED] MARKET order placed - will execute immediately")
+            else:
+                logging.info(f"[ORDER PLACED] LIMIT order placed at Rs.{order_price:.2f}")
+            
+            logging.info(f"[ORDER ID] {order_id} | Unique ID: {unique_order_id}")
+            logging.info(f"[STRATEGY] {execution_strategy}")
+            
             # CRITICAL: Verify order execution
-            logging.info(f"[PENDING] Verifying order execution...")
+            if order_type == 'MARKET':
+                logging.info(f"[VERIFYING] Checking MARKET order execution...")
+            else:
+                logging.info(f"[VERIFYING] Checking LIMIT order status...")
+            
             verification = verify_order_execution(clientcode, unique_order_id)
             
             if verification['executed']:
@@ -4777,6 +4846,11 @@ def execute_trade_entry(trade_setup, clientcode):
                 actual_entry_price = verification['avg_price']
                 actual_quantity = verification['filled_qty']
                 planned_entry = trade_setup['entry_price']
+                
+                if order_type == 'MARKET':
+                    logging.info(f"[FILLED] MARKET order executed at Rs.{actual_entry_price:.2f}")
+                else:
+                    logging.info(f"[FILLED] LIMIT order executed at Rs.{actual_entry_price:.2f}")
                 
                 # Calculate slippage
                 slippage_pct, slippage_amt = calculate_slippage(planned_entry, actual_entry_price, 'BUY')
@@ -4832,11 +4906,72 @@ def execute_trade_entry(trade_setup, clientcode):
                 logging.info(f"[TARGET] Levels: Entry Rs.{actual_entry_price:.2f} | SL Rs.{adjusted_sl:.2f} | T1 Rs.{adjusted_t1:.2f} | T2 Rs.{adjusted_t2:.2f}")
                 return order_id
             else:
-                # Order NOT executed (rejected/timeout)
-                logging.error(f"[FAIL] Order NOT executed: {verification['status']}")
-                if verification['status'] == 'rejected':
-                    logging.error(f"Rejection reason: {verification.get('reason')}")
-                return None
+                # Order NOT executed yet (pending/rejected)
+                order_status = verification['status']
+                
+                if order_type == 'LIMIT' and (order_status == 'pending' or order_status == 'open'):
+                    # LIMIT order placed but not filled yet - this is NORMAL
+                    logging.info(f"[PENDING] LIMIT order placed successfully at Rs.{order_price:.2f}, waiting for price")
+                    logging.info(f"[MONITORING] Order will auto-fill when market reaches target price")
+                    
+                    # Store as pending order for monitoring
+                    if clientcode not in ACTIVE_TRADES:
+                        ACTIVE_TRADES[clientcode] = {}
+                    
+                    ACTIVE_TRADES[clientcode][order_id] = {
+                        'trade_number': trade_setup['trade_number'],
+                        'instrument': trade_setup['instrument'],
+                        'tradingsymbol': tradingsymbol,
+                        'symboltoken': symboltoken,
+                        'target_entry_price': order_price,
+                        'quantity': final_quantity,
+                        'stop_loss': adjusted_sl,
+                        'target_1': adjusted_t1,
+                        'target_2': adjusted_t2,
+                        'status': 'pending_entry',  # Special status for unfilled LIMIT orders
+                        'order_placed_time': datetime.now().isoformat(),
+                        'uniqueorderid': unique_order_id,
+                        'order_type': 'LIMIT',
+                        'execution_strategy': execution_strategy
+                    }
+                    
+                    logging.info(f"[OK] Trade #{trade_setup['trade_number']} LIMIT order placed (pending fill)")
+                    return order_id  # Return order_id even though not filled yet
+                
+                elif order_type == 'MARKET' and (order_status == 'pending' or order_status == 'open'):
+                    # MARKET order should fill instantly - pending means exchange delay, retry verification
+                    logging.warning(f"[DELAY] MARKET order still pending (exchange processing delay)")
+                    logging.warning(f"[RETRY] Will retry verification in monitoring cycle")
+                    
+                    # Store as pending for immediate re-check
+                    if clientcode not in ACTIVE_TRADES:
+                        ACTIVE_TRADES[clientcode] = {}
+                    
+                    ACTIVE_TRADES[clientcode][order_id] = {
+                        'trade_number': trade_setup['trade_number'],
+                        'instrument': trade_setup['instrument'],
+                        'tradingsymbol': tradingsymbol,
+                        'symboltoken': symboltoken,
+                        'target_entry_price': target_entry_price,
+                        'quantity': final_quantity,
+                        'stop_loss': adjusted_sl,
+                        'target_1': adjusted_t1,
+                        'target_2': adjusted_t2,
+                        'status': 'pending_entry',
+                        'order_placed_time': datetime.now().isoformat(),
+                        'uniqueorderid': unique_order_id,
+                        'order_type': 'MARKET',
+                        'execution_strategy': 'IMMEDIATE'
+                    }
+                    
+                    return order_id
+                    
+                elif order_status == 'rejected':
+                    logging.error(f"[REJECTED] Order rejected: {verification.get('reason')}")
+                    return None
+                else:
+                    logging.error(f"[FAIL] Order status: {order_status}")
+                    return None
         else:
             logging.error(f"Failed to place order")
             return None
@@ -6790,8 +6925,8 @@ For each trade, specify:
 2. Option type (CE for bullish, PE for bearish)
 3. Entry price: Option premium price (realistic based on NIFTY level)
 4. Entry conditions: NIFTY spot price level that triggers entry
-5. Stop loss: Option premium level (not NIFTY index)
-6. Target 1 & Target 2: Option premium levels
+5. Stop loss: Option premium level (20-30% below entry)
+6. **Target: 10% profit** (single target - book and exit)
 7. **QUANTITY CALCULATION**: Calculate lots to maximize capital usage
    - Formula: Lots = floor(Max Per Trade / (Entry Premium × Lot Size))
    - Quantity = Lots × {nifty_lot_size}
@@ -6833,18 +6968,16 @@ Format example (for capital Rs.25,000, max per trade Rs.12,500):
 Trade 1: NIFTY 26000 CE
 Entry Premium: Rs.120
 Entry Condition: When NIFTY crosses above 25900
-Stop Loss: Rs.85 (premium)
-Target 1: Rs.140 (premium)
-Target 2: Rs.165 (premium)
+Stop Loss: Rs.85 (premium, 29% below entry)
+Target: Rs.132 (premium, 10% profit - book and exit)
 Quantity: 100 (calculated: floor(12500/(120×25)) = 4 lots = 4×25 = 100 qty)
 Entry Time: 09:30 to 11:30
 
 Trade 2: NIFTY 25700 PE
 Entry Premium: Rs.100
 Entry Condition: When NIFTY crosses below 25750
-Stop Loss: Rs.70 (premium)
-Target 1: Rs.120 (premium)
-Target 2: Rs.145 (premium)
+Stop Loss: Rs.70 (premium, 30% below entry)
+Target: Rs.110 (premium, 10% profit - book and exit)
 Quantity: 125 (calculated: floor(12500/(100×25)) = 5 lots = 5×25 = 125 qty)
 Entry Time: 09:30 to 12:00"""
 
@@ -7743,6 +7876,64 @@ def improved_monitor_active_trades():
         if not trades:
             continue
         
+        # First, check pending LIMIT orders that haven't filled yet
+        pending_orders = {
+            trade_id: trade_data 
+            for trade_id, trade_data in trades.items() 
+            if trade_data.get('status') == 'pending_entry'
+        }
+        
+        for order_id, order_data in pending_orders.items():
+            try:
+                unique_order_id = order_data.get('uniqueorderid')
+                symboltoken = order_data.get('symboltoken')
+                target_price = order_data.get('target_entry_price')
+                
+                # Check order status
+                verification = verify_order_execution(clientcode, unique_order_id)
+                
+                if verification['executed']:
+                    # Order filled! Convert to active trade
+                    actual_entry_price = verification['avg_price']
+                    actual_quantity = verification['filled_qty']
+                    
+                    logging.info(f"[FILLED] LIMIT order {order_id} executed at Rs.{actual_entry_price:.2f}")
+                    
+                    # Update to active trade
+                    trades[order_id]['status'] = 'open'
+                    trades[order_id]['entry_price'] = actual_entry_price
+                    trades[order_id]['quantity'] = actual_quantity
+                    trades[order_id]['remaining_quantity'] = actual_quantity
+                    trades[order_id]['entry_time'] = datetime.now().isoformat()
+                    trades[order_id]['entry_timestamp'] = datetime.now()
+                    trades[order_id]['target_1_hit'] = False
+                    trades[order_id]['pnl'] = 0
+                    
+                    # Initialize trailing stop
+                    update_trailing_stop(clientcode, order_id, actual_entry_price, actual_entry_price, 
+                                       order_data.get('stop_loss'))
+                    
+                    logging.info(f"[OK] Trade #{order_data.get('trade_number')} now ACTIVE")
+                    
+                elif verification['status'] == 'rejected':
+                    # Order rejected
+                    logging.error(f"[REJECTED] LIMIT order {order_id} was rejected: {verification.get('reason')}")
+                    trades[order_id]['status'] = 'rejected'
+                    
+                elif verification['status'] in ['pending', 'open']:
+                    # Still pending - check current price
+                    current_price = get_price_from_cache_or_api(symboltoken, clientcode)
+                    if current_price:
+                        distance = abs(current_price - target_price)
+                        distance_pct = (distance / target_price) * 100
+                        
+                        if distance_pct < 1:
+                            logging.info(f"[NEAR] Order {order_id} close to fill: Current Rs.{current_price:.2f}, Target Rs.{target_price:.2f} ({distance_pct:.1f}% away)")
+                        
+            except Exception as e:
+                logging.error(f"Error checking pending order {order_id}: {e}")
+        
+        # Now monitor open/active trades
         open_trades = {
             trade_id: trade_data 
             for trade_id, trade_data in trades.items() 
