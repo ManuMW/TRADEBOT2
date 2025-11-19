@@ -269,7 +269,15 @@
             </div>
 
             <div class="info-box" style="background: #fff7ed; border-left-color: #f97316;">
-                [STAR] <strong>Opening Volatility Scalp (Ultra-Fast):</strong> Specialized 9:15 AM opening strategy! Analyzes gap at 9:10 AM, executes all-in ATM trade at 9:15 AM sharp. Target: 5% profit, SL: 40%, Time: 5 minutes max. System monitors EVERY 1 SECOND from 9:15-9:20 AM for instant exits (reverts to 60-sec intervals after). Indian market optimized. Enable auto-trading to activate.
+                [STAR] <strong>Opening Volatility Scalp (Professional):</strong> Specialized 9:16 AM opening strategy with professional filters! 
+                <br><strong>Process:</strong> 
+                <br>• 9:10 AM: Analyze gap and bias
+                <br>• 9:15-9:16 AM: Wait for first candle to close
+                <br>• <strong>First Candle Filter:</strong> Range > 30 points required (Range < 30 = SKIP TRADE)
+                <br>• 9:16 AM: Execute all-in ATM trade (only if volatility confirmed)
+                <br>• 9:17 AM: <strong>2-Min Checkpoint</strong> - Exit if profit < 1% (avoid holding dead trades)
+                <br>• 9:21 AM: Hard exit at 5 minutes max
+                <br><strong>Targets:</strong> 5% profit, 40% SL. System monitors EVERY 1 SECOND during 9:15-9:20 AM for instant exits. Enable auto-trading to activate.
             </div>
 
             <div class="info-box" style="background: #dcfce7; border-left-color: #22c55e;">
@@ -278,9 +286,14 @@
 
             <div style="text-align: center; margin: 20px 0;">
                 <button class="refresh-btn" onclick="generateNow()" style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); box-shadow: 0 5px 15px rgba(34, 197, 94, 0.4);">
-                    [LIGHTNING] Generate & Start Now
+                    ⚡ Generate & Start Now
                 </button>
+                <button class="refresh-btn" onclick="document.getElementById('analysisFileInput').click()" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); box-shadow: 0 5px 15px rgba(245, 158, 11, 0.4); margin-left: 15px;">
+                    📄 Upload My Analysis
+                </button>
+                <input type="file" id="analysisFileInput" accept=".txt,.docx" style="display: none;" onchange="uploadAnalysis()">
                 <div id="generateStatus" style="margin-top: 10px; font-size: 14px; color: #666;"></div>
+                <div id="uploadStatus" style="margin-top: 10px; font-size: 14px; color: #666;"></div>
             </div>
 
             <div class="schedule-card">
@@ -621,6 +634,44 @@
                 console.error('Error selecting plan:', error);
                 alert(`[X] Network error: ${error.message}`);
             }
+        }
+
+        async function uploadAnalysis() {
+            const fileInput = document.getElementById('analysisFileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) return;
+            
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.innerHTML = '⏳ Uploading your analysis...';
+            statusDiv.style.color = '#3b82f6';
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch('/api/analysis/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.status) {
+                    statusDiv.innerHTML = `✅ Analysis uploaded successfully! (${data.content_length} characters)<br>Your trades will now include your analysis.`;
+                    statusDiv.style.color = '#10b981';
+                } else {
+                    statusDiv.innerHTML = `❌ Upload failed: ${data.message}`;
+                    statusDiv.style.color = '#ef4444';
+                }
+            } catch (error) {
+                console.error('Error uploading analysis:', error);
+                statusDiv.innerHTML = `❌ Upload error: ${error.message}`;
+                statusDiv.style.color = '#ef4444';
+            }
+            
+            // Clear file input
+            fileInput.value = '';
         }
 
         // Initial load

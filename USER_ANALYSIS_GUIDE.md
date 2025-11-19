@@ -91,7 +91,7 @@ TIME WINDOWS:
 - Second chance: 01:30 - 02:30 (if trend continues)
 
 EXPIRY NOTES:
-- Thursday expiry - expect higher volatility
+- Tuesday expiry - expect higher volatility
 - Time decay accelerates after 2 PM
 - Close all positions by 3:15 PM
 ```
