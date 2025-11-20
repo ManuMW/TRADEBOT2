@@ -2417,11 +2417,45 @@ Uploaded: {doc_info['uploaded_at'].strftime('%Y-%m-%d %H:%M')}
         except Exception as e:
             logging.warning(f"Could not fetch expiry dates for AI: {e}")
         
+        # Fetch current option premiums for AI context
+        atm_strike = round(current_price / 50) * 50  # Round to nearest 50
+        atm_ce_premium = None
+        atm_pe_premium = None
+        
+        try:
+            from SmartApi.smartWebSocketV2 import SmartWebSocketV2
+            # Get ATM CE premium
+            atm_ce_token = get_symbol_token_for_option(atm_strike, 'CE', None, clientcode)
+            if atm_ce_token:
+                atm_ce_premium = get_option_ltp(atm_ce_token, clientcode)
+            
+            # Get ATM PE premium
+            atm_pe_token = get_symbol_token_for_option(atm_strike, 'PE', None, clientcode)
+            if atm_pe_token:
+                atm_pe_premium = get_option_ltp(atm_pe_token, clientcode)
+                
+            logging.info(f"[MARKET PREMIUMS] {atm_strike} CE: Rs.{atm_ce_premium}, {atm_strike} PE: Rs.{atm_pe_premium}")
+        except Exception as e:
+            logging.warning(f"Could not fetch current premiums: {e}")
+        
+        # Build premium context for AI
+        premium_context = ""
+        if atm_ce_premium and atm_pe_premium:
+            premium_context = f"""
+
+CURRENT MARKET PREMIUMS (LIVE DATA):
+• {atm_strike} CE: Rs.{atm_ce_premium:.2f}
+• {atm_strike} PE: Rs.{atm_pe_premium:.2f}
+
+⚠️ CRITICAL: Use these REAL premiums as reference! ATM options are trading around Rs.{(atm_ce_premium + atm_pe_premium)/2:.0f}.
+Don't suggest Rs.100 if real price is Rs.150 - it will cause instant loss!
+"""
+        
         # Build comprehensive AI prompt
         prompt = f"""Generate intraday NIFTY options trade plan for LIVE TRADING.
 
 CAPITAL: Rs.{capital:,} (from account profile)
-MAX PER TRADE: Rs.{max_per_trade:,.0f} (50% of capital){expiry_note}{expiry_info_text}
+MAX PER TRADE: Rs.{max_per_trade:,.0f} (50% of capital){expiry_note}{expiry_info_text}{premium_context}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 MARKET CONTEXT:
@@ -2452,82 +2486,68 @@ VOLATILITY (VIX):
 GLOBAL MARKETS:
 {json.dumps(trading_data.get('global_markets', {}).get('data', {}), indent=2) if trading_data.get('global_markets') else 'Not available'}
 
-Generate 1-2 NIFTY option trade setups with complete details:
+Generate 1-2 NIFTY option trade setups for **IMMEDIATE EXECUTION** (Bracket Orders):
+
+**CRITICAL: IMMEDIATE EXECUTION STRATEGY**
+- All trades will execute IMMEDIATELY at current market price (no waiting for conditions)
+- System uses Bracket Orders with automatic Stop Loss and Target management
+- Entry happens NOW, not when price crosses a level
+- Choose strikes based on current market bias and immediate opportunity
 
 For each trade, specify:
-1. Strike price (ATM, slightly OTM based on NIFTY level)
-2. Option type (CE for bullish, PE for bearish)
-3. Entry price: Option premium price (realistic based on NIFTY level)
-4. Entry conditions: NIFTY spot price level that triggers entry
-5. Stop loss: Option premium level (20-30% below entry)
-6. **Target: 10% profit** (single target - book and exit)
-7. **QUANTITY CALCULATION**: Calculate lots to maximize capital usage
+1. Strike price (Choose based on current NIFTY level and immediate bias)
+2. Option type (CE for bullish bias, PE for bearish bias or hedge)
+3. Entry price: Current option premium (realistic for chosen strike)
+4. Stop loss: 30% below entry
+5. **Target: 10% profit** (automatic exit by exchange)
+6. **QUANTITY CALCULATION**: Calculate lots to maximize capital usage
    - Formula: Lots = floor(Max Per Trade / (Entry Premium × Lot Size))
    - Quantity = Lots × {nifty_lot_size}
-   - Example: If entry premium is Rs.120 and max per trade is Rs.{max_per_trade:,.0f}:
-     * Lots = floor({max_per_trade:,.0f} / (120 × {nifty_lot_size})) = floor({max_per_trade/3000:.1f}) = {int(max_per_trade/3000)} lots
-     * Quantity = {int(max_per_trade/3000)} × {nifty_lot_size} = {int(max_per_trade/3000) * nifty_lot_size}
-8. Entry time window: e.g., 09:30 to 11:00
+7. Reasoning: Why this strike is good for immediate entry NOW
 
-Guidelines:
-- Option premiums: Rs.50-200 range for ATM options
-- Stop loss: 20-30% below entry price
-- Target 1: 15-20% above entry price
-- Target 2: 30-40% above entry price
+**IMMEDIATE EXECUTION GUIDELINES**:
+Current NIFTY: {current_price:.0f}
 
-**INTRADAY ENTRY STRATEGY - REALISTIC EXECUTION**:
-
-Current Market Level: {current_price:.0f}
-
-Entry Distance Guidelines:
-- **AGGRESSIVE SCALP** (Recommended): +/-30 to 50 points → High execution probability (70-80%)
-  * Bullish: {current_price+30:.0f} to {current_price+50:.0f}
-  * Bearish: {current_price-50:.0f} to {current_price-30:.0f}
+Strike Selection (for NOW execution):
+- **ATM/Slightly OTM**: Best for immediate entries
+  * CE: {current_price:.0f} to {current_price+200:.0f} strikes
+  * PE: {current_price-200:.0f} to {current_price:.0f} strikes
   
-- **MODERATE SWING**: +/-50 to 100 points → Medium execution probability (40-60%)
-  * Bullish: {current_price+50:.0f} to {current_price+100:.0f}
-  * Bearish: {current_price-100:.0f} to {current_price-50:.0f}
+- **Directional Bias**:
+  * If bullish indicators: Choose CE slightly OTM
+  * If bearish indicators: Choose PE slightly OTM
+  * If neutral: Choose ATM for both sides (hedge)
 
-- **AVOID**: Entries beyond +/-150 points → Low execution probability (<20%)
-  * These rarely trigger in a single trading day
-  * Example: If NIFTY at 25900, entry at 26100 is unrealistic for intraday
+- **Premium Range**: Rs.50-150 for good risk/reward
+- **Avoid**: Deep ITM (too expensive) or Deep OTM (low delta)
 
-RULE: Default to AGGRESSIVE SCALP range for maximum execution rate. Only suggest MODERATE range if strong trend/momentum indicators support big moves. NEVER suggest entries beyond +/-150 points for intraday plans.
+RULE: Select strikes that offer good immediate opportunity based on CURRENT market structure, not future conditions. Bracket Orders execute NOW and exchange manages exits.
 
-Rationale: Indian market intraday moves average 100-200 points. Suggesting 200+ point entries means trades won't execute, capital sits idle. Tight entries = More action = Better capital utilization.
-
-- Entry condition format: "When NIFTY crosses above {current_price+50:.0f}" (for CE) or "When NIFTY crosses below {current_price-50:.0f}" (for PE)
-- **IMPORTANT**: Calculate quantity to use maximum capital available per trade
-- **PROFIT TARGET**: System will automatically exit ALL trades at 10% profit
-  * Simple, consistent target across all market conditions
-  * Opening scalp trades (9:15 AM) use separate 5% target
-  * Regular trades: Always book at 10% profit
-- **RE-ENTRY RULE**: After profit booking, re-entry only if price breaks prior high/low by 0.5%
-- **IV FILTER**: Prefer rising IV (premium expansion) for long positions
-- **VIX MOMENTUM**: Rising VIX = bigger moves expected, Falling VIX = book early
+- **PROFIT TARGET**: 10% - Automatic exit by exchange
+- **STOP LOSS**: 30% below entry - Automatic exit by exchange
+- **Product Type**: INTRADAY - All positions auto-squared off at 3:15 PM
 
 Format example (for capital Rs.{capital:,}, max per trade Rs.{max_per_trade:,.0f}):
-Trade 1: NIFTY 26000 CE (Expiry: {'Next week' if is_expiry_day else 'Current week'})
-Entry Premium: Rs.120
-Entry Condition: When NIFTY crosses above 25900
-Stop Loss: Rs.85 (premium, 29% below entry)
-Target: Rs.132 (premium, 10% profit - book and exit)
-Quantity: {int(max_per_trade/3000) * nifty_lot_size} (calculated: floor({max_per_trade:,.0f}/(120×25)) = {int(max_per_trade/3000)} lots = {int(max_per_trade/3000)}×25 = {int(max_per_trade/3000) * nifty_lot_size} qty)
-Entry Time: 09:30 to 11:30
+Trade 1: NIFTY {atm_strike} CE (Expiry: 26-NOV-2025)
+Entry Premium: Rs.{atm_ce_premium if atm_ce_premium else 150} (IMMEDIATE execution at current market price)
+Stop Loss: Rs.{(atm_ce_premium * 0.7) if atm_ce_premium else 105} (auto-managed by exchange, 30% below entry)
+Target: Rs.{(atm_ce_premium * 1.1) if atm_ce_premium else 165} (auto-managed by exchange, 10% profit)
+Quantity: {int(max_per_trade / ((atm_ce_premium if atm_ce_premium else 150) * nifty_lot_size)) * nifty_lot_size} (calculated: floor({max_per_trade:,.0f}/({atm_ce_premium if atm_ce_premium else 150}×{nifty_lot_size})) lots)
+Reasoning: Bullish bias, ATM strike offers good delta and immediate opportunity
 
-Trade 2: NIFTY 25700 PE (Expiry: {'Next week' if is_expiry_day else 'Current week'})
-Entry Premium: Rs.100
-Entry Condition: When NIFTY crosses below 25750
-Stop Loss: Rs.70 (premium, 30% below entry)
-Target: Rs.110 (premium, 10% profit - book and exit)
-Quantity: {int(max_per_trade/2500) * nifty_lot_size} (calculated: floor({max_per_trade:,.0f}/(100×25)) = {int(max_per_trade/2500)} lots = {int(max_per_trade/2500)}×25 = {int(max_per_trade/2500) * nifty_lot_size} qty)
-Entry Time: 09:30 to 12:00
+Trade 2: NIFTY {atm_strike - 100} PE (Expiry: 26-NOV-2025)
+Entry Premium: Rs.{atm_pe_premium if atm_pe_premium else 140} (IMMEDIATE execution at current market price)
+Stop Loss: Rs.{(atm_pe_premium * 0.7) if atm_pe_premium else 98} (auto-managed by exchange, 30% below entry)
+Target: Rs.{(atm_pe_premium * 1.1) if atm_pe_premium else 154} (auto-managed by exchange, 10% profit)
+Quantity: {int(max_per_trade / ((atm_pe_premium if atm_pe_premium else 140) * nifty_lot_size)) * nifty_lot_size} (calculated: floor({max_per_trade:,.0f}/({atm_pe_premium if atm_pe_premium else 140}×{nifty_lot_size})) lots)
+Reasoning: Bearish hedge, protects against downside moves
 
 EXECUTION RULES:
-- **10% PROFIT TARGET** - Book immediately, don't get greedy
-- **Trend Filter**: Trade with EMA trend (bullish = CE bias, bearish = PE bias)
-- **VIX Momentum**: Rising VIX = hold longer, Falling VIX = book early
-- **Stop Losses**: VIX < 15 = 10-15% SL, VIX 15-20 = 20% SL, VIX 20-25 = 30% SL, VIX > 25 = 40% SL
+- **IMMEDIATE ENTRY** - All trades execute NOW at market price
+- **BRACKET ORDERS** - Exchange automatically manages SL and Target
+- **10% PROFIT** - Auto-booked by exchange
+- **30% STOP LOSS** - Auto-triggered by exchange
+- **3:15 PM AUTO-SQUARE-OFF** - All positions closed automatically
 - **Re-entries**: Only if price breaks prior extreme by 0.5% (avoid churning)
 - Close ALL positions by 3:15 PM
 - **EXPIRY USAGE**: {'Use NEXT week expiry (today is expiry day - current week expires at 3:30 PM)' if is_expiry_day else 'Use current week NIFTY expiry'}"""
@@ -3832,42 +3852,56 @@ Return ONLY valid JSON (no markdown, no explanation) in this exact format:
   "trades": [
     {{
       "trade_number": 1,
-      "instrument": "NIFTY 26000 CE",
-      "tradingsymbol": "NIFTY26000CE",
-      "strike": 26000,
+      "symbol": "NIFTY 26100 CE",
+      "strike": 26100,
       "option_type": "CE",
+      "expiry": "26-NOV-2025",
       "entry_price": 120.00,
-      "entry_conditions": [
-        {{"type": "price", "indicator": "NIFTY", "operator": ">", "value": 25900}}
-      ],
-      "quantity": 25,
-      "stop_loss": 85.00,
-      "target_1": 140.00,
-      "target_2": 165.00,
-      "entry_time_start": "09:30",
-      "entry_time_end": "11:30"
+      "stop_loss": 84.00,
+      "target_price": 132.00,
+      "quantity": 50,
+      "trade_type": "BUY",
+      "reasoning": "Bullish setup when NIFTY crosses above 26030",
+      "status": "pending_entry"
     }}
   ]
 }}
 
-PARSING RULES:
-1. instrument: Extract strike and option type (e.g., "NIFTY 26000 CE")
-2. tradingsymbol: Combine without spaces (e.g., "NIFTY26000CE")
-3. strike: Extract numeric strike price (e.g., 26000)
-4. option_type: Extract "CE" or "PE"
-5. entry_price: Extract option premium for entry (e.g., Rs.120 → 120.00)
-6. entry_conditions: Convert "When NIFTY crosses above 25900" to:
-   {{"type": "price", "indicator": "NIFTY", "operator": ">", "value": 25900}}
-   Convert "When NIFTY crosses below 25750" to:
-   {{"type": "price", "indicator": "NIFTY", "operator": "<", "value": 25750}}
-7. stop_loss: Extract premium level (e.g., Rs.85 → 85.00)
-8. target_1: Extract first target premium (e.g., Rs.140 → 140.00)
-9. target_2: Extract second target premium (e.g., Rs.165 → 165.00)
-10. quantity: Extract quantity (default to 25 if not specified)
-11. entry_time_start/end: Extract time window (e.g., "09:30 to 11:30" → "09:30", "11:30")
+CRITICAL PARSING RULES:
+1. **symbol**: MUST extract full option name like "NIFTY 26100 CE", "NIFTY 25950 PE" - this is MANDATORY
+2. **strike**: Extract numeric strike (e.g., 26100, 25950)
+3. **option_type**: Extract "CE" or "PE"
+4. **expiry**: Extract expiry date in DD-MMM-YYYY format (e.g., "26-NOV-2025", "25-NOV-2025")
+   - If text says "25NOV2025" convert to "25-NOV-2025"
+   - If text says "Expiry: 25NOV2025" extract as "25-NOV-2025"
+5. **entry_price**: Extract option premium (e.g., Rs.120 → 120.00)
+6. **stop_loss**: Extract SL premium (e.g., Rs.84 → 84.00)
+7. **target_price**: Extract first target premium (e.g., Rs.132 → 132.00)
+8. **quantity**: Extract lot size × lots (e.g., "2 lots" × 25 = 50)
+9. **trade_type**: Always "BUY" for options
+10. **reasoning**: Brief summary of entry condition and bias
+11. **status**: Always "pending_entry"
 
-IMPORTANT: All prices (entry_price, stop_loss, targets) should be OPTION PREMIUM levels, NOT NIFTY index levels.
-Return valid JSON only."""
+EXAMPLE INPUT:
+"Option: NIFTY 26100 CE (Expiry: 25NOV2025)
+Entry Premium: Rs. 120
+Stop Loss: Rs. 84
+Target: Rs. 132
+Quantity: 50"
+
+MUST OUTPUT:
+{{
+  "symbol": "NIFTY 26100 CE",
+  "strike": 26100,
+  "option_type": "CE",
+  "expiry": "25-NOV-2025",
+  "entry_price": 120.00,
+  "stop_loss": 84.00,
+  "target_price": 132.00,
+  "quantity": 50
+}}
+
+Return valid JSON only. NO MARKDOWN. NO ```json``` tags."""
 
         response = openai_client.chat.completions.create(
             model="gpt-4o",
@@ -3892,7 +3926,89 @@ Return valid JSON only."""
                 parsed_json = parsed_json[4:]
         
         parsed_data = json.loads(parsed_json)
-        logging.info(f"Successfully parsed {len(parsed_data.get('trades', []))} trades")
+        
+        # Log raw parsed data for debugging
+        logging.info(f"Raw parsed data: {json.dumps(parsed_data, indent=2)}")
+        
+        # Post-process trades to ensure all required fields and convert expiry dates
+        trades = parsed_data.get('trades', [])
+        logging.info(f"Post-processing {len(trades)} trades...")
+        
+        for idx, trade in enumerate(trades):
+            logging.info(f"Processing trade {idx+1}: {trade.get('symbol', 'NO SYMBOL')}")
+            
+            # Ensure symbol field exists
+            if 'symbol' not in trade or not trade['symbol'] or trade['symbol'] == 'N/A':
+                # Try to construct from strike and option_type
+                strike = trade.get('strike', 0)
+                opt_type = trade.get('option_type', '')
+                if strike and opt_type:
+                    trade['symbol'] = f"NIFTY {strike} {opt_type}"
+                    logging.info(f"  - Constructed symbol: {trade['symbol']}")
+            
+            # Ensure target_price exists (might be target_1 or target)
+            if 'target_price' not in trade:
+                trade['target_price'] = trade.get('target_1', trade.get('target', 0))
+                logging.info(f"  - Set target_price: {trade['target_price']}")
+            
+            # Convert expiry date format
+            expiry = trade.get('expiry', '')
+            logging.info(f"  - Original expiry: '{expiry}'")
+            
+            if expiry:
+                # Convert "25NOV2025" or "25-NOV-2025" to standard format
+                import re
+                # Try to parse various formats
+                if re.match(r'\d{2}[A-Z]{3}\d{4}', expiry):  # 25NOV2025
+                    day = expiry[:2]
+                    month = expiry[2:5]
+                    year = expiry[5:]
+                    trade['expiry'] = f"{day}-{month}-{year}"
+                    logging.info(f"  - Converted expiry: {trade['expiry']}")
+                elif not re.match(r'\d{2}-[A-Z]{3}-\d{4}', expiry):
+                    # If not in DD-MMM-YYYY format, try to get next Tuesday
+                    from datetime import timedelta
+                    ist_now = get_ist_now()
+                    days_ahead = (1 - ist_now.weekday()) % 7  # Days to next Tuesday
+                    if days_ahead == 0:
+                        days_ahead = 7  # If today is Tuesday, get next Tuesday
+                    next_tuesday = ist_now + timedelta(days=days_ahead)
+                    trade['expiry'] = next_tuesday.strftime('%d-%b-%Y').upper()
+                    logging.info(f"  - Calculated expiry (next Tuesday): {trade['expiry']}")
+                else:
+                    # Check if year is wrong (e.g., 2023 instead of 2025)
+                    try:
+                        parsed_date = datetime.strptime(expiry, '%d-%b-%Y')
+                        if parsed_date.year < 2025:
+                            logging.warning(f"  - Wrong year {parsed_date.year}, fixing to 2025")
+                            from datetime import timedelta
+                            ist_now = get_ist_now()
+                            days_ahead = (1 - ist_now.weekday()) % 7
+                            if days_ahead == 0:
+                                days_ahead = 7
+                            next_tuesday = ist_now + timedelta(days=days_ahead)
+                            trade['expiry'] = next_tuesday.strftime('%d-%b-%Y').upper()
+                            logging.info(f"  - Fixed expiry: {trade['expiry']}")
+                    except:
+                        pass
+            else:
+                # No expiry found, calculate next Tuesday in IST
+                from datetime import timedelta
+                ist_now = get_ist_now()
+                days_ahead = (1 - ist_now.weekday()) % 7  # Days to next Tuesday
+                if days_ahead == 0:
+                    days_ahead = 7  # If today is Tuesday, get next Tuesday
+                next_tuesday = ist_now + timedelta(days=days_ahead)
+                trade['expiry'] = next_tuesday.strftime('%d-%b-%Y').upper()
+                logging.info(f"  - Generated expiry (next Tuesday): {trade['expiry']}")
+            
+            # Ensure other required fields have defaults
+            trade.setdefault('trade_type', 'BUY')
+            trade.setdefault('status', 'pending_entry')
+            trade.setdefault('reasoning', 'Trade setup from AI analysis')
+        
+        logging.info(f"Successfully parsed and post-processed {len(trades)} trades")
+        logging.info(f"Final parsed data: {json.dumps(parsed_data, indent=2)}")
         
         return parsed_data
         
@@ -4570,6 +4686,131 @@ def verify_order_execution(clientcode, unique_order_id, max_retries=5, wait_seco
         'status': 'timeout'
     }
 
+def validate_trade_premiums(trade_setups, clientcode):
+    """
+    Validate AI-generated premiums against real market data.
+    Prevents executing trades with unrealistic prices (e.g., AI says Rs.100 but real price is Rs.218).
+    
+    Returns: List of validation results with reasons
+    """
+    validation_results = []
+    
+    for trade in trade_setups:
+        trade_number = trade.get('trade_number')
+        strike = trade.get('strike_price')
+        option_type = trade.get('option_type', '').upper()
+        ai_premium = trade.get('entry_price', 0)
+        expiry = trade.get('expiry_date')
+        symboltoken = trade.get('symboltoken')
+        
+        logging.info(f"[VALIDATION] Checking Trade #{trade_number}: {strike} {option_type} @ Rs.{ai_premium}")
+        
+        # If no symboltoken, try to fetch it
+        if not symboltoken:
+            symboltoken = get_symbol_token_for_option(strike, option_type, expiry, clientcode)
+            if symboltoken:
+                trade['symboltoken'] = symboltoken
+        
+        if not symboltoken:
+            validation_results.append({
+                'valid': False,
+                'trade_number': trade_number,
+                'strike': strike,
+                'option_type': option_type,
+                'ai_premium': ai_premium,
+                'real_premium': 'N/A',
+                'reason': f'Cannot find option contract for {strike} {option_type}'
+            })
+            continue
+        
+        # Get real market premium using existing function
+        real_premium = get_option_ltp(symboltoken, clientcode)
+        
+        if real_premium is None:
+            validation_results.append({
+                'valid': False,
+                'trade_number': trade_number,
+                'strike': strike,
+                'option_type': option_type,
+                'ai_premium': ai_premium,
+                'real_premium': 'N/A',
+                'reason': f'Cannot fetch real market price for {strike} {option_type}'
+            })
+            continue
+        
+        # Calculate deviation percentage
+        deviation = abs(ai_premium - real_premium) / real_premium * 100
+        
+        # VALIDATION RULES:
+        # - Allow up to 20% deviation (market moves fast, AI data might be slightly stale)
+        # - If deviation > 20%, reject the trade
+        
+        if deviation > 20:
+            validation_results.append({
+                'valid': False,
+                'trade_number': trade_number,
+                'strike': strike,
+                'option_type': option_type,
+                'ai_premium': ai_premium,
+                'real_premium': real_premium,
+                'deviation_pct': round(deviation, 1),
+                'reason': f'AI premium Rs.{ai_premium} is {deviation:.1f}% off from real price Rs.{real_premium:.2f}'
+            })
+            logging.warning(f"  ✗ INVALID: AI says Rs.{ai_premium}, Real market Rs.{real_premium:.2f} ({deviation:.1f}% off)")
+        else:
+            validation_results.append({
+                'valid': True,
+                'trade_number': trade_number,
+                'strike': strike,
+                'option_type': option_type,
+                'ai_premium': ai_premium,
+                'real_premium': real_premium,
+                'deviation_pct': round(deviation, 1),
+                'reason': 'Premium is realistic'
+            })
+            logging.info(f"  ✓ VALID: AI says Rs.{ai_premium}, Real market Rs.{real_premium:.2f} ({deviation:.1f}% deviation)")
+            
+            # UPDATE trade setup with real premium for execution
+            trade['entry_price'] = real_premium
+            trade['validated_premium'] = real_premium
+    
+    return validation_results
+
+
+def get_symbol_token_for_option(strike_price, option_type, expiry_date, clientcode):
+    """Helper to get symboltoken for an option contract"""
+    try:
+        # Parse expiry date
+        if isinstance(expiry_date, str):
+            try:
+                if '-' in expiry_date:
+                    expiry_dt = datetime.strptime(expiry_date, '%d-%b-%Y')
+                else:
+                    expiry_dt = datetime.strptime(expiry_date, '%d%b%Y')
+            except:
+                logging.error(f"Cannot parse expiry date: {expiry_date}")
+                return None
+        else:
+            expiry_dt = expiry_date
+        
+        expiry_str = expiry_dt.strftime('%d%b').upper()
+        tradingsymbol = f"NIFTY{expiry_str}{int(strike_price)}{option_type}"
+        
+        # Search in session instruments
+        session_data = _SMARTAPI_SESSIONS.get(session.get('session_id'))
+        if session_data and 'instruments' in session_data:
+            instruments = session_data['instruments']
+            for inst in instruments:
+                if inst['symbol'] == tradingsymbol:
+                    return inst['token']
+        
+        return None
+        
+    except Exception as e:
+        logging.error(f"Error getting symbol token: {e}")
+        return None
+
+
 def execute_trade_entry(trade_setup, clientcode):
     """
     Execute entry order for a trade setup with comprehensive risk checks.
@@ -4795,25 +5036,46 @@ def execute_trade_entry(trade_setup, clientcode):
             # Could not fetch current price - default to LIMIT for safety
             logging.warning(f"[ALERT] Could not fetch current option price - defaulting to LIMIT order")
         
-        # Prepare order parameters based on strategy
+        # Prepare order parameters - USE BRACKET ORDER for automatic SL/Target
+        # Bracket Order (BO) places entry + SL + Target in one order
+        
+        # Calculate absolute SL and Target values
+        stop_loss_price = trade_setup.get('stop_loss', 0)
+        target_price = trade_setup.get('target_price', 0)
+        entry_price_estimate = trade_setup.get('entry_price', 0)
+        
+        # Calculate trigger offset (difference from entry)
+        if stop_loss_price > 0 and entry_price_estimate > 0:
+            stoploss_trigger = abs(entry_price_estimate - stop_loss_price)
+        else:
+            stoploss_trigger = entry_price_estimate * 0.30  # Default 30% SL
+        
+        if target_price > 0 and entry_price_estimate > 0:
+            squareoff_value = abs(target_price - entry_price_estimate)
+        else:
+            squareoff_value = entry_price_estimate * 0.10  # Default 10% target
+        
+        logging.info(f"[BRACKET ORDER] Setting up automatic exits:")
+        logging.info(f"  Entry: ~Rs.{entry_price_estimate:.2f}")
+        logging.info(f"  Stop Loss Trigger: Rs.{stoploss_trigger:.2f} below entry")
+        logging.info(f"  Target Squareoff: Rs.{squareoff_value:.2f} above entry")
+        
         order_params = {
-            'variety': 'NORMAL',
+            'variety': 'BO',  # BRACKET ORDER - Automatic SL + Target
             'tradingsymbol': tradingsymbol,
             'symboltoken': symboltoken,
             'transactiontype': 'BUY',
             'exchange': 'NFO',
-            'ordertype': order_type,
-            'producttype': 'CARRYFORWARD',  # NRML - Full control over exits
+            'ordertype': 'MARKET',  # Enter immediately at market price
+            'producttype': 'INTRADAY',  # BO requires INTRADAY
             'duration': 'DAY',
-            'quantity': str(final_quantity)
+            'quantity': str(final_quantity),
+            'stoploss': str(round(stoploss_trigger, 2)),  # SL points below entry
+            'squareoff': str(round(squareoff_value, 2))   # Target points above entry
         }
         
-        # Add price only for LIMIT orders
-        if order_type == 'LIMIT':
-            order_params['price'] = str(round(order_price, 2))
-            logging.info(f"[ORDER] Placing LIMIT order at Rs.{order_price:.2f}")
-        else:
-            logging.info(f"[ORDER] Placing MARKET order (will execute at best available price)")
+        logging.info(f"[EXECUTE NOW] Placing BRACKET ORDER - Entry + Auto SL/Target")
+        logging.info(f"[ADVANTAGE] No monitoring needed - Exchange manages exits automatically")
         
         # Track commission (Rs.20 per order)
         track_commission(clientcode, num_orders=1, commission_per_order=20)
@@ -6201,6 +6463,43 @@ def toggle_auto_trading():
     enabled = body.get('enabled', False)
     starting_capital = body.get('starting_capital', 15000)
     
+    # Validate capital against RMS funds when enabling
+    if enabled:
+        try:
+            jwt_token = _SMARTAPI_SESSIONS[session_id]['tokens'].get('jwtToken', '')
+            if jwt_token.startswith('Bearer '):
+                jwt_token = jwt_token[7:]
+                
+            if jwt_token:
+                url = "https://apiconnect.angelone.in/rest/secure/angelbroking/user/v1/getRMS"
+                headers = {
+                    'Authorization': f'Bearer {jwt_token}',
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-UserType': 'USER',
+                    'X-SourceID': 'WEB',
+                    'X-ClientLocalIP': 'CLIENT_LOCAL_IP',
+                    'X-ClientPublicIP': 'CLIENT_PUBLIC_IP',
+                    'X-MACAddress': 'MAC_ADDRESS',
+                    'X-PrivateKey': os.getenv('SMARTAPI_API_KEY')
+                }
+                
+                response = requests.get(url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('status'):
+                        available_funds = float(data['data'].get('availablecash', 0))
+                        
+                        # Validate capital doesn't exceed available funds
+                        if starting_capital > available_funds:
+                            return jsonify({
+                                'status': False,
+                                'message': f'Trading capital (Rs.{starting_capital:,.2f}) exceeds available funds (Rs.{available_funds:,.2f})'
+                            }), 400
+        except Exception as e:
+            logging.error(f"Error validating capital against RMS: {e}")
+            # Continue anyway - validation is a safety check but not critical
+    
     # Initialize daily stats if enabling trading
     if enabled:
         initialize_daily_stats(clientcode, starting_capital)
@@ -6227,6 +6526,36 @@ def get_auto_trading_status():
     
     clientcode = _SMARTAPI_SESSIONS[session_id]['clientcode']
     
+    # Fetch RMS funds to show available capital
+    available_funds = 0
+    try:
+        jwt_token = _SMARTAPI_SESSIONS[session_id]['tokens'].get('jwtToken', '')
+        if jwt_token.startswith('Bearer '):
+            jwt_token = jwt_token[7:]
+            
+        if jwt_token:
+            url = "https://apiconnect.angelone.in/rest/secure/angelbroking/user/v1/getRMS"
+            headers = {
+                'Authorization': f'Bearer {jwt_token}',
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-UserType': 'USER',
+                'X-SourceID': 'WEB',
+                'X-ClientLocalIP': 'CLIENT_LOCAL_IP',
+                'X-ClientPublicIP': 'CLIENT_PUBLIC_IP',
+                'X-MACAddress': 'MAC_ADDRESS',
+                'X-PrivateKey': os.getenv('SMARTAPI_API_KEY')
+            }
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('status'):
+                    available_funds = float(data['data'].get('availablecash', 0))
+    except Exception as e:
+        print(f"Error fetching RMS funds: {e}")
+        available_funds = 0
+    
     return jsonify({
         'status': True,
         'enabled': AUTO_TRADING_ENABLED.get(clientcode, False),
@@ -6234,6 +6563,7 @@ def get_auto_trading_status():
         'parsed_setups': PARSED_TRADE_SETUPS.get(clientcode, []),
         'active_trades': ACTIVE_TRADES.get(clientcode, {}),
         'plan_history_count': len(TRADE_PLAN_HISTORY.get(clientcode, [])),
+        'available_funds': available_funds,
         'timestamp': datetime.now().isoformat()
     })
 
@@ -6397,6 +6727,32 @@ def generate_and_start_now():
         num_trades = len(parsed_data['trades'])
         logging.info(f"[STEP 3/4] Parsed {num_trades} trade setups successfully")
         
+        # Step 3.5: VALIDATE PREMIUMS AGAINST REAL MARKET DATA
+        logging.info(f"[STEP 3.5/5] Validating AI premiums against real market prices...")
+        
+        validation_results = validate_trade_premiums(parsed_data['trades'], clientcode)
+        invalid_trades = [v for v in validation_results if not v['valid']]
+        
+        if invalid_trades:
+            logging.error(f"[VALIDATION FAILED] {len(invalid_trades)} trades have unrealistic premiums!")
+            for invalid in invalid_trades:
+                logging.error(f"  ✗ Trade #{invalid['trade_number']}: {invalid['reason']}")
+            
+            return jsonify({
+                'status': False,
+                'message': f'AI generated unrealistic premiums for {len(invalid_trades)} trade(s)',
+                'validation_errors': invalid_trades,
+                'suggestion': 'Click "Generate Trade Plan Now" again to get a new plan with accurate prices.',
+                'details': [
+                    f"Trade #{v['trade_number']}: {v['strike']} {v['option_type']} - AI said Rs.{v['ai_premium']}, Real market Rs.{v.get('real_premium', 'N/A')} ({v.get('deviation_pct', 0)}% off)"
+                    for v in invalid_trades
+                ]
+            }), 400
+        
+        logging.info(f"[VALIDATION PASSED] All {num_trades} trades have realistic premiums ✓")
+        for result in validation_results:
+            logging.info(f"  ✓ Trade #{result['trade_number']}: AI Rs.{result['ai_premium']} → Real Rs.{result['real_premium']:.2f} ({result['deviation_pct']}% deviation)")
+        
         # Save to history
         plan_id = f"plan_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         if clientcode not in TRADE_PLAN_HISTORY:
@@ -6415,55 +6771,66 @@ def generate_and_start_now():
         
         logging.info(f"[HISTORY] Saved plan {plan_id} to history ({len(TRADE_PLAN_HISTORY[clientcode])} total)")
         
-        # Step 4: Auto-enable trading if requested
+        # Step 4: EXECUTE BRACKET ORDERS IMMEDIATELY (premiums already validated and updated)
+        logging.info(f"[STEP 4/5] Executing Bracket Orders with validated premiums...")
+        executed_trades = []
+        
+        for trade_setup in parsed_data['trades']:
+            trade_number = trade_setup.get('trade_number')
+            logging.info(f"[EXECUTE] Placing Bracket Order for Trade #{trade_number}...")
+            
+            try:
+                trade_id = execute_trade_entry(trade_setup, clientcode)
+                
+                if trade_id:
+                    logging.info(f"[SUCCESS] Trade #{trade_number} executed! Order ID: {trade_id}")
+                    executed_trades.append(trade_id)
+                    trade_setup['executed'] = True
+                    trade_setup['order_id'] = trade_id
+                else:
+                    logging.error(f"[FAILED] Trade #{trade_number} execution failed")
+                    trade_setup['executed'] = False
+            except Exception as e:
+                logging.error(f"[ERROR] Failed to execute Trade #{trade_number}: {e}")
+                trade_setup['executed'] = False
+        
+        logging.info(f"[EXECUTION] {len(executed_trades)} out of {num_trades} trades executed successfully")
+        
+        # Step 5: Auto-enable trading if requested
         if auto_enable:
             AUTO_TRADING_ENABLED[clientcode] = True
-            logging.info(f"[STEP 4/4] Auto-trading ENABLED for {clientcode}")
+            logging.info(f"[STEP 5/5] Auto-trading ENABLED for {clientcode}")
         else:
-            logging.info(f"[STEP 4/4] Auto-trading NOT enabled (manual mode)")
+            logging.info(f"[STEP 5/5] Auto-trading NOT enabled (manual mode)")
         
         # Prepare trade summaries for response
         trade_summaries = []
         for trade in parsed_data['trades']:
-            # Extract expiry from tradingsymbol (e.g., NIFTY21NOV2425850CE)
-            tradingsymbol = trade.get('tradingsymbol', '')
-            expiry_info = 'Not found'
-            
-            if tradingsymbol:
-                import re
-                # Match pattern: NIFTY + DATE (e.g., 21NOV24) + STRIKE + CE/PE
-                match = re.search(r'NIFTY(\d{2}[A-Z]{3}\d{2})(\d+)(CE|PE)', tradingsymbol.upper())
-                if match:
-                    expiry_str = match.group(1)  # e.g., "21NOV24"
-                    try:
-                        # Parse expiry date
-                        expiry_date = datetime.strptime(expiry_str, '%d%b%y')
-                        expiry_info = expiry_date.strftime('%d-%b-%Y')  # e.g., "21-Nov-2024"
-                    except:
-                        expiry_info = expiry_str
-            
             trade_summaries.append({
                 'trade_number': trade.get('trade_number'),
-                'symbol': trade.get('tradingsymbol', 'N/A'),
-                'trade_type': trade.get('option_type', 'N/A'),
+                'symbol': trade.get('symbol', 'N/A'),
+                'trade_type': trade.get('trade_type', 'BUY'),
+                'option_type': trade.get('option_type', ''),
                 'entry_price': trade.get('entry_price', 0),
                 'stop_loss': trade.get('stop_loss', 0),
-                'target_price': trade.get('target_1', 0),
-                'target_2': trade.get('target_2', 0),
+                'target_price': trade.get('target_price', 0),
                 'quantity': trade.get('quantity', 25),
-                'entry_conditions': trade.get('entry_conditions', []),
-                'expiry': expiry_info
+                'expiry': trade.get('expiry', 'Not specified'),
+                'reasoning': trade.get('reasoning', ''),
+                'executed': trade.get('executed', False),  # Execution status
+                'order_id': trade.get('order_id', None)  # Order ID if executed
             })
         
         logging.info("=" * 60)
-        logging.info(f"[SUCCESS] On-demand setup complete! Trading {'ACTIVE' if auto_enable else 'READY (not enabled)'}")
+        logging.info(f"[SUCCESS] {len(executed_trades)}/{num_trades} trades executed! Trading {'ACTIVE' if auto_enable else 'READY'}")
         logging.info("=" * 60)
         
         return jsonify({
             'status': True,
-            'message': f'Trade plan generated successfully at {current_time.strftime("%H:%M")}',
+            'message': f'{len(executed_trades)}/{num_trades} Bracket Orders executed at {current_time.strftime("%H:%M")}',
             'generated_at': datetime.now().isoformat(),
             'num_trades': num_trades,
+            'executed_count': len(executed_trades),
             'trades': trade_summaries,
             'auto_trading_enabled': auto_enable,
             'starting_capital': starting_capital,
@@ -7774,9 +8141,17 @@ def improved_monitor_prices_and_execute():
             # Monitor active trades
             improved_monitor_active_trades()
             
-            # Adaptive sleep - faster near trigger levels
+            # Adaptive sleep - HYBRID APPROACH
             sleep_duration = calculate_adaptive_sleep()
-            logging.info(f"Sleeping for {sleep_duration} seconds...")
+            
+            # Enhanced logging to show monitoring mode
+            if sleep_duration == 5:
+                logging.info(f"[HYBRID MODE] PENDING TRADES → Fast monitoring (5 sec intervals)")
+            elif sleep_duration == 15:
+                logging.info(f"[HYBRID MODE] ACTIVE TRADES → Moderate monitoring (15 sec intervals)")
+            else:
+                logging.info(f"[HYBRID MODE] IDLE → Slow heartbeat (60 sec intervals)")
+            
             time.sleep(sleep_duration)
         
         except Exception as e:
@@ -7784,65 +8159,47 @@ def improved_monitor_prices_and_execute():
             time.sleep(30)
 
 def calculate_adaptive_sleep():
-    """Calculate sleep duration based on market conditions"""
+    """Calculate sleep duration based on trade status - HYBRID APPROACH"""
     try:
-        # Default: 60 seconds (much faster than 5 minutes)
-        base_interval = MONITORING_INTERVAL
+        # Check for pending trade setups (not yet executed)
+        has_pending_trades = False
+        has_active_trades = False
         
-        # Check if any trades are close to entry/exit levels
         for clientcode, trade_setups in PARSED_TRADE_SETUPS.items():
             if not AUTO_TRADING_ENABLED.get(clientcode, False):
                 continue
             
-            nifty_price = get_price_from_cache_or_api('99926000', clientcode)
-            if not nifty_price:
+            for setup in trade_setups:
+                if setup.get('status') == 'pending_entry' and not setup.get('executed'):
+                    has_pending_trades = True
+                    break
+            
+            if has_pending_trades:
+                break
+        
+        # Check for active trades (already executed, being monitored for exit)
+        for clientcode, trades in ACTIVE_TRADES.items():
+            if not AUTO_TRADING_ENABLED.get(clientcode, False):
                 continue
             
-            for setup in trade_setups:
-                if setup.get('executed'):
-                    continue
-                
-                # Check if close to entry trigger
-                for condition in setup.get('entry_conditions', []):
-                    if condition.get('type') == 'price' and condition.get('indicator') == 'NIFTY':
-                        trigger_level = condition.get('value', 0)
-                        distance = abs(nifty_price - trigger_level)
-                        
-                        # If within 20 points of trigger, check every 10 seconds
-                        if distance < 20:
-                            return 10
-                        # If within 50 points, check every 30 seconds
-                        elif distance < 50:
-                            return 30
-        
-        # Check active trades
-        for clientcode, trades in ACTIVE_TRADES.items():
             for trade_id, trade_data in trades.items():
-                if trade_data.get('status') != 'open':
-                    continue
-                
-                current_price = get_price_from_cache_or_api(
-                    trade_data.get('symboltoken'), clientcode
-                )
-                if not current_price:
-                    continue
-                
-                entry_price = trade_data.get('entry_price', 0)
-                sl = trade_data.get('stop_loss', 0)
-                target = trade_data.get('target_1', 0)
-                
-                # If close to SL or target, check more frequently
-                sl_distance = abs(current_price - sl) / entry_price if entry_price > 0 else 1
-                target_distance = abs(current_price - target) / entry_price if entry_price > 0 else 1
-                
-                # Within 2% of SL or target - check every 10 seconds
-                if sl_distance < 0.02 or target_distance < 0.02:
-                    return 10
-                # Within 5% - check every 20 seconds
-                elif sl_distance < 0.05 or target_distance < 0.05:
-                    return 20
+                if trade_data.get('status') in ['open', 'pending_entry']:
+                    has_active_trades = True
+                    break
+            
+            if has_active_trades:
+                break
         
-        return base_interval
+        # HYBRID INTERVALS:
+        if has_pending_trades:
+            # Waiting for entry - check frequently to catch entry levels
+            return 5  # 5 seconds for pending trades
+        elif has_active_trades:
+            # Monitoring exits - moderate speed
+            return 15  # 15 seconds for active trades
+        else:
+            # No trades - slow heartbeat
+            return 60  # 60 seconds when idle
         
     except Exception as e:
         logging.error(f"Error calculating adaptive sleep: {e}")

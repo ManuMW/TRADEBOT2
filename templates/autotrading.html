@@ -268,6 +268,15 @@
                 [WARNING] <strong>Important:</strong> When enabled, the system will automatically generate trade plans at 9:15 AM, monitor prices, execute trades, and close positions at 3:15 PM. Make sure you have sufficient funds and understand the risks involved.
             </div>
 
+            <div class="info-box" id="fundsInfoBox" style="background: #dcfce7; border-left-color: #22c55e; display: none;">
+                [MONEY] <strong>Available Funds:</strong> <span id="availableFunds">Loading...</span>
+                <br><strong>Trading Capital Allocation:</strong>
+                <input type="number" id="tradingCapital" placeholder="Enter amount (e.g., 20000)" 
+                       style="margin-top: 8px; padding: 8px; border: 2px solid #22c55e; border-radius: 6px; width: 200px; font-size: 14px;" 
+                       min="1000" step="100">
+                <span id="capitalError" style="color: #ef4444; margin-left: 10px; display: none;"></span>
+            </div>
+
             <div class="info-box" style="background: #fff7ed; border-left-color: #f97316;">
                 [STAR] <strong>Opening Volatility Scalp (Professional):</strong> Specialized 9:16 AM opening strategy with professional filters! 
                 <br><strong>Process:</strong> 
@@ -386,6 +395,7 @@
 
     <script>
         let currentStatus = false;
+        let autoRefreshInterval = null;
 
         async function refreshStatus() {
             try {
@@ -405,11 +415,51 @@
                         statusBadge.textContent = '✗ Disabled';
                     }
 
-                    // Display trade plan
+                    // Display available funds
+                    const fundsInfoBox = document.getElementById('fundsInfoBox');
+                    const availableFunds = document.getElementById('availableFunds');
+                    if (data.available_funds && data.available_funds > 0) {
+                        availableFunds.textContent = `Rs.${data.available_funds.toFixed(2)}`;
+                        fundsInfoBox.style.display = 'block';
+                    }
+
+                    // Display trade plan and parsed setups
                     const planContent = document.getElementById('planContent');
                     if (data.trade_plan && data.trade_plan.plan) {
                         planContent.className = 'plan-content';
-                        planContent.textContent = data.trade_plan.plan;
+                        
+                        // Show parsed trade setups prominently at the top
+                        let displayHTML = '';
+                        if (data.parsed_setups && data.parsed_setups.length > 0) {
+                            displayHTML += '<div style="background: #dcfce7; border: 2px solid #22c55e; padding: 20px; border-radius: 10px; margin-bottom: 20px;">';
+                            displayHTML += `<h3 style="color: #065f46; margin: 0 0 15px 0;">[CHECK] ${data.parsed_setups.length} Trade Setup(s) Ready to Execute</h3>`;
+                            
+                            data.parsed_setups.forEach((setup, idx) => {
+                                displayHTML += `
+                                    <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #22c55e;">
+                                        <h4 style="color: #059669; margin: 0 0 10px 0;">Trade #${idx + 1}: ${setup.symbol || 'N/A'} ${setup.trade_type || ''}</h4>
+                                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; font-size: 14px;">
+                                            <div><strong>Entry:</strong> Rs.${setup.entry_price || 'N/A'}</div>
+                                            <div><strong>Target:</strong> Rs.${setup.target_price || 'N/A'}</div>
+                                            <div><strong>Stop Loss:</strong> Rs.${setup.stop_loss || 'N/A'}</div>
+                                            <div><strong>Quantity:</strong> ${setup.quantity || 'N/A'}</div>
+                                            <div><strong>Expiry:</strong> ${setup.expiry || 'Not specified'}</div>
+                                            <div><strong>Status:</strong> <span style="color: #f59e0b; font-weight: 600;">${setup.status || 'Waiting for entry'}</span></div>
+                                        </div>
+                                        ${setup.reasoning ? `<div style="margin-top: 10px; padding: 10px; background: #f0fdf4; border-radius: 6px; font-size: 13px;"><strong>Reasoning:</strong> ${setup.reasoning}</div>` : ''}
+                                    </div>
+                                `;
+                            });
+                            displayHTML += '</div>';
+                        }
+                        
+                        // Show full AI plan text below
+                        displayHTML += '<div style="background: #f9fafb; padding: 15px; border-radius: 8px;">';
+                        displayHTML += '<h4 style="margin: 0 0 10px 0; color: #374151;">[ROBOT] Full AI Analysis:</h4>';
+                        displayHTML += '<pre style="white-space: pre-wrap; font-family: monospace; font-size: 13px; line-height: 1.6; margin: 0;">' + data.trade_plan.plan + '</pre>';
+                        displayHTML += '</div>';
+                        
+                        planContent.innerHTML = displayHTML;
                     } else {
                         planContent.className = 'no-plan';
                         planContent.textContent = 'No trade plan generated yet. Plans are generated at 9:15 AM on trading days.';
@@ -462,20 +512,54 @@
         async function toggleAutoTrading() {
             const enabled = document.getElementById('autoTradingToggle').checked;
             
+            // Get and validate trading capital
+            let tradingCapital = 15000; // Default
+            const capitalInput = document.getElementById('tradingCapital');
+            const capitalError = document.getElementById('capitalError');
+            
+            if (enabled && capitalInput.value) {
+                tradingCapital = parseFloat(capitalInput.value);
+                
+                // Validation
+                if (isNaN(tradingCapital) || tradingCapital < 1000) {
+                    capitalError.textContent = 'Minimum Rs.1000 required';
+                    capitalError.style.display = 'inline';
+                    document.getElementById('autoTradingToggle').checked = false;
+                    return;
+                }
+                
+                // Check against available funds
+                const availableFundsText = document.getElementById('availableFunds').textContent;
+                const availableFunds = parseFloat(availableFundsText.replace('Rs.', '').replace(',', ''));
+                
+                if (tradingCapital > availableFunds) {
+                    capitalError.textContent = `Cannot exceed available funds (Rs.${availableFunds.toFixed(2)})`;
+                    capitalError.style.display = 'inline';
+                    document.getElementById('autoTradingToggle').checked = false;
+                    return;
+                }
+                
+                capitalError.style.display = 'none';
+            }
+            
             try {
                 const response = await fetch('/api/autotrading/toggle', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ enabled: enabled })
+                    body: JSON.stringify({ 
+                        enabled: enabled,
+                        starting_capital: tradingCapital
+                    })
                 });
 
                 const data = await response.json();
                 
                 if (data.status) {
                     alert(data.message);
-                    refreshStatus();
+                    await refreshStatus();
+                    startAutoRefresh(); // Restart with correct interval based on new status
                 } else {
                     alert('Error: ' + data.message);
                     document.getElementById('autoTradingToggle').checked = currentStatus;
@@ -491,6 +575,34 @@
             const statusDiv = document.getElementById('generateStatus');
             const button = event.target;
             
+            // Get and validate trading capital
+            let tradingCapital = 15000; // Default
+            const capitalInput = document.getElementById('tradingCapital');
+            const capitalError = document.getElementById('capitalError');
+            
+            if (capitalInput.value) {
+                tradingCapital = parseFloat(capitalInput.value);
+                
+                // Validation
+                if (isNaN(tradingCapital) || tradingCapital < 1000) {
+                    capitalError.textContent = 'Minimum Rs.1000 required';
+                    capitalError.style.display = 'inline';
+                    return;
+                }
+                
+                // Check against available funds
+                const availableFundsText = document.getElementById('availableFunds').textContent;
+                const availableFunds = parseFloat(availableFundsText.replace('Rs.', '').replace(',', ''));
+                
+                if (tradingCapital > availableFunds) {
+                    capitalError.textContent = `Cannot exceed available funds (Rs.${availableFunds.toFixed(2)})`;
+                    capitalError.style.display = 'inline';
+                    return;
+                }
+                
+                capitalError.style.display = 'none';
+            }
+            
             // Disable button during generation
             button.disabled = true;
             button.style.opacity = '0.6';
@@ -505,7 +617,7 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        starting_capital: 15000,
+                        starting_capital: tradingCapital,
                         auto_enable: true
                     })
                 });
@@ -677,8 +789,17 @@
         // Initial load
         refreshStatus();
 
-        // Auto-refresh every 30 seconds
-        setInterval(refreshStatus, 30000);
+        // Auto-refresh every 10 seconds when auto-trading is enabled (to show trade updates)
+        // Auto-refresh every 30 seconds when disabled
+        function startAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+            const interval = currentStatus ? 10000 : 30000; // 10 sec if enabled, 30 sec if disabled
+            autoRefreshInterval = setInterval(refreshStatus, interval);
+        }
+        
+        startAutoRefresh();
     </script>
 </body>
 </html>
